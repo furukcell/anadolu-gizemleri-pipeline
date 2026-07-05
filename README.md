@@ -2,8 +2,8 @@
 
 Bu repo, **Anadolu Gizemleri** YouTube kanalı için 7-8 dakikalık belgesel
 tarzı videoları tamamen otomatik üreten bir pipeline'dır. Sistem, hazır
-senaryolardan başlayarak seslendirme, görsel toplama, video montajı ve
-YouTube'a yükleme adımlarının tamamını insan müdahalesi olmadan yapar.
+senaryolardan başlayarak seslendirme, görsel/video toplama, video montajı
+ve YouTube'a yükleme adımlarının tamamını insan müdahalesi olmadan yapar.
 
 Pipeline **GitHub Actions** üzerinde çalışacak şekilde tasarlandı — yani
 bir bilgisayara ihtiyaç yok, her şey buluttadır. Tetikleme ve takip
@@ -30,23 +30,37 @@ telefondan yapılabilir.
 content/NN_....md  (hazır senaryo, TR + EN birlikte)
         │
         ▼
-script_parse.py        → TR bölümünü çeker, sahne notu + anlatım
-        │                 metnini ayırır, script_parsed.json üretir
+script_parse.py         → TR bölümünü çeker, sahne notu + anlatım
+        │                  metnini ayırır, script_parsed.json üretir
         ▼
-google_tts_generate.py → Google Cloud TTS ile anlatımı seslendirir,
-        │                 voiceover.mp3 üretir
+[SES: kullanıcı kaydı]  → Kullanıcı kendi sesiyle anlatımı okur, ham
+        │                  kaydı yükler (voice_postprocess.py henüz
+        │                  yazılmadı — ffmpeg zinciri test edildi ama
+        │                  modül haline getirilmedi)
+        │                  (alternatif: google_tts_generate.py ile
+        │                  Google Cloud TTS de hazır durumda)
         ▼
-image_fetch.py          → Sahne notlarından görsel arama sorgusu
-   (henüz yazılmadı)       çıkarır, Pexels + Wikimedia'dan görsel indirir
+image_fetch.py          → HİBRİT modda çalışır: sahne notundan sorgu
+        (yazıldı ✅)       çıkarır, önce Wikimedia'da gerçek/tarihi foto
+                           arar, bulamazsa Pexels'ten atmosferik video
+                           klip, o da yoksa Pexels foto dener. Hiçbir
+                           sahne medyasız kalmaz. images_manifest.json
+                           üretir.
         ▼
-youtube_montaj.py       → ffmpeg ile görselleri Ken Burns efektiyle
-   (henüz yazılmadı)       birleştirir, sesle senkronlar, video_XX.mp4 üretir
+youtube_montaj.py       → ffmpeg ile foto sahnelerini Ken Burns
+        (yazıldı ✅)       efektiyle, video sahnelerini trim/loop ile
+                           işler, gerçek ses süresine göre sahne
+                           sürelerini yeniden ölçeklendirir, sesle
+                           senkronlar, video_XX.mp4 üretir
         ▼
 youtube_upload.py       → YouTube Data API v3 ile videoyu otomatik yükler
+   (henüz yazılmadı)      (OAuth kurulumu devam ediyor)
+        ▼
+pipeline.py             → tüm adımları sırayla çalıştıran orkestratör
    (henüz yazılmadı)
         ▼
-GitHub Actions cron     → her gün 1 video işlenip yayına alınır
-   (henüz kurulmadı)       (30 günde seri tamamlanır)
+GitHub Actions workflow → kullanıcı ham ses kaydını yükleyince (veya
+   (henüz kurulmadı)       cron ile) tetiklenir, o günün videosu işlenir
 ```
 
 ---
@@ -57,17 +71,21 @@ GitHub Actions cron     → her gün 1 video işlenip yayına alınır
 anadolu-gizemleri-pipeline/
 ├── config.py                  # Tüm ayarların tek merkezi
 ├── script_parse.py            # MD dosyalarını okuyup ayrıştırır
-├── google_tts_generate.py     # Seslendirme modülü
+├── google_tts_generate.py     # Seslendirme modülü (TTS alternatifi)
+├── image_fetch.py             # Hibrit foto/video toplama modülü
+├── youtube_montaj.py          # Ken Burns + video montaj modülü
 ├── requirements.txt           # Python bağımlılıkları
 ├── content/                   # 30 adet hazır senaryo (.md, TR+EN)
 │   ├── 01_gobeklitepe_karahantepe_senaryo_tr_en_UTF8.md
 │   ├── 02_catalhoyuk_senaryo_tr_en_UTF8.md
 │   └── ... (30 dosya)
-├── output/                    # Üretilen dosyalar (script/ses/görsel/video)
+├── output/                    # Üretilen dosyalar (script/ses/medya/video)
 │   └── video_NN/
 │       ├── script_parsed.json
 │       ├── voiceover.mp3
-│       └── ...
+│       ├── images_manifest.json
+│       ├── media/              # indirilen foto (.jpg) / video (.mp4)
+│       └── video_NN.mp4
 └── state/
     └── uploaded.json          # Hangi videoların yüklendiğinin kaydı
 ```
@@ -89,37 +107,54 @@ anadolu-gizemleri-pipeline/
   - YouTube Data API v3 etkinleştirildi
   - `tts-bot` service account oluşturuldu, JSON key üretildi
 - [x] `GOOGLE_CREDENTIALS_JSON` GitHub Secrets'a eklendi
+- [x] **Karar:** TTS yerine kullanıcının kendi sesi kullanılacak —
+      ffmpeg ile "temiz stüdyo + tok + net" belgesel tonu için ses
+      işleme zinciri test edildi ve onaylandı (highpass, noise reduction,
+      compressor, hedefli EQ, loudnorm — echo/pitch değişikliği YOK)
+- [x] `image_fetch.py` yazıldı — **hibrit mod**: Wikimedia'dan gerçek
+      foto, bulunamazsa Pexels'ten atmosferik video klip, o da yoksa
+      Pexels foto. Fallback zinciri sayesinde hiçbir sahne medyasız
+      kalmıyor.
+- [x] `PEXELS_API_KEY` alındı ve GitHub Secrets'a eklendi
+- [x] `youtube_montaj.py` yazıldı — Ken Burns (foto) + trim/loop (video)
+      sahnelerini gerçek ses süresine göre ölçekleyip birleştiriyor,
+      voiceover + opsiyonel arka müzik mix ediliyor
+- [x] YouTube Data API v3, Google Cloud projesinde etkinleştirildi
 
 ## Sırada Ne Var
 
-- [ ] Google TTS ile gerçek bir seslendirme testi yapmak (uçtan uca)
-- [ ] YouTube OAuth Client kurulumu (Consent Screen + Client ID)
-- [ ] `image_fetch.py` — sahne notlarından görsel sorgusu çıkarıp
-      Pexels + Wikimedia'dan görsel indiren modül
-- [ ] `youtube_montaj.py` — ffmpeg ile Ken Burns efektli video montajı
+- [ ] `voice_postprocess.py` — test edilen ffmpeg ses zincirini modül
+      haline getirmek (kullanıcının ham kaydını otomatik işleyecek)
+- [ ] YouTube OAuth kurulumu:
+  - [ ] OAuth Consent Screen (External, `youtube.upload` scope, test user)
+  - [ ] OAuth Client ID (Desktop app tipi)
+  - [ ] Refresh token üretimi (bir kerelik yetkilendirme)
 - [ ] `youtube_upload.py` — otomatik YouTube yükleme
 - [ ] `pipeline.py` — tüm adımları sırayla çalıştıran orkestratör
-- [ ] `.github/workflows/daily.yml` — günlük cron ile otomatik tetikleme
+- [ ] `.github/workflows/` — kullanıcı ses kaydı yükleyince (veya cron
+      ile) otomatik tetikleme
 
 ---
 
 ## Kullanılan Teknolojiler
 
 - **Python 3.10+**
-- **Google Cloud Text-to-Speech** — seslendirme (tr-TR-Standard-A sesi)
-- **Pexels API + Wikimedia Commons** — görsel kaynakları
-- **ffmpeg** — video montaj ve ses birleştirme
+- **Kullanıcının kendi sesi** (ffmpeg ile post-prodüksiyon) — birincil
+  seslendirme yöntemi; **Google Cloud Text-to-Speech** (tr-TR-Wavenet-B)
+  yedek/alternatif olarak hazır duruyor
+- **Wikimedia Commons + Pexels (Foto + Video API)** — hibrit görsel/video
+  kaynakları
+- **ffmpeg** — ses işleme, Ken Burns efekti, video montaj, senkronizasyon
 - **YouTube Data API v3** — otomatik video yükleme
-- **GitHub Actions** — tüm pipeline'ın çalıştığı bulut ortamı (cron ile
-  günlük tetikleme)
+- **GitHub Actions** — tüm pipeline'ın çalıştığı bulut ortamı
 
 ## Gerekli Secrets (Settings → Secrets and variables → Actions)
 
 | Secret adı                 | Açıklama                                      | Durum |
 |-----------------------------|------------------------------------------------|-------|
 | `GOOGLE_CREDENTIALS_JSON`   | TTS service account key (JSON içeriği)         | ✅ Eklendi |
+| `PEXELS_API_KEY`            | Pexels foto/video arama API anahtarı           | ✅ Eklendi |
 | `YOUTUBE_CLIENT_SECRET`     | YouTube OAuth client secret (JSON içeriği)     | ⏳ Bekliyor |
-| `PEXELS_API_KEY`            | Pexels görsel arama API anahtarı               | ⏳ Bekliyor |
 
 ---
 
@@ -128,10 +163,11 @@ anadolu-gizemleri-pipeline/
 - Çözünürlük: 1920x1080 (yatay, klasik YouTube videosu)
 - FPS: 30
 - Süre: video başına ortalama 5-6 dakika seslendirme (~570-680 kelime)
+- Görsel/video karışımı: sahneye göre hibrit (gerçek tarihi foto +
+  atmosferik video klip)
 - Yayın sıklığı: günde 1 video, 30 gün boyunca
 
 ---
 
 *Bu proje Claude (Anthropic) yardımıyla, telefon üzerinden GitHub web
 arayüzü kullanılarak geliştirilmektedir — bilgisayar kullanılmamıştır.*
-
