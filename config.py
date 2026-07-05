@@ -41,9 +41,11 @@ GOOGLE_APPLICATION_CREDENTIALS = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS", "google_credentials.json"
 )
 GOOGLE_TTS_LANGUAGE_CODE = "tr-TR"
-# Wavenet/Neural2 daha dogal ama kotasi daha dar; Standard genis ucretsiz kotaya sahip.
-# Baslangicta Standard ile basla, memnun kalmazsan Neural2-A / Neural2-C dene.
-GOOGLE_TTS_VOICE_NAME = "tr-TR-Standard-A"
+# WaveNet: Standard'dan cok daha dogal/sicak, VE ucretsiz kotaya sahip
+# (Google Cloud TTS'te WaveNet sesleri ayda 1 milyon karaktere kadar ucretsiz).
+# 30 videoluk serimiz toplam ~110.000 karakter - kotanin cok altinda, ucret yok.
+# tr-TR-Wavenet-B: erkek, derin ton - belgesel/gizem anlatimina uygun
+GOOGLE_TTS_VOICE_NAME = "tr-TR-Wavenet-B"
 GOOGLE_TTS_SPEAKING_RATE = 0.97   # belgesel/gizem tonu icin hafif yavas
 GOOGLE_TTS_PITCH = -1.5           # hafif kalin/ciddi ton
 
