@@ -63,11 +63,20 @@ def synthesize_chunk(client, text: str, output_path: Path):
         name=config.GOOGLE_TTS_VOICE_NAME,
     )
 
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3,
-        speaking_rate=config.GOOGLE_TTS_SPEAKING_RATE,
-        pitch=config.GOOGLE_TTS_PITCH,
+    # Chirp 3 HD / Studio ses ailesi "pitch" parametresini desteklemiyor.
+    # Bu ailelerde pitch gonderilmezse API hata verir, o yuzden kosullu ekliyoruz.
+    is_pitch_supported = not any(
+        tag in config.GOOGLE_TTS_VOICE_NAME for tag in ("Chirp3-HD", "Studio")
     )
+
+    audio_config_kwargs = {
+        "audio_encoding": texttospeech.AudioEncoding.MP3,
+        "speaking_rate": config.GOOGLE_TTS_SPEAKING_RATE,
+    }
+    if is_pitch_supported:
+        audio_config_kwargs["pitch"] = config.GOOGLE_TTS_PITCH
+
+    audio_config = texttospeech.AudioConfig(**audio_config_kwargs)
 
     response = client.synthesize_speech(
         input=synthesis_input, voice=voice, audio_config=audio_config
@@ -156,4 +165,4 @@ if __name__ == "__main__":
 
     gun = int(sys.argv[1])
     generate_voiceover(gun)
-  
+    
