@@ -31,14 +31,13 @@ content/NN_....md  (hazır senaryo, TR + EN birlikte)
         │
         ▼
 script_parse.py         → TR bölümünü çeker, sahne notu + anlatım
-        │                  metnini ayırır, script_parsed.json üretir
+        (yazıldı ✅)       metnini ayırır, script_parsed.json üretir
         ▼
-[SES: kullanıcı kaydı]  → Kullanıcı kendi sesiyle anlatımı okur, ham
-        │                  kaydı yükler (voice_postprocess.py henüz
-        │                  yazılmadı — ffmpeg zinciri test edildi ama
-        │                  modül haline getirilmedi)
-        │                  (alternatif: google_tts_generate.py ile
-        │                  Google Cloud TTS de hazır durumda)
+voice_postprocess.py    → Kullanıcının kendi ham ses kaydını (telefon
+        (yazıldı ✅)       kaydı) alır; ffmpeg ile temiz + tok + net
+                           belgesel tonuna çevirir, voiceover.mp3 üretir
+                           (alternatif: google_tts_generate.py ile
+                           Google Cloud TTS de hazır durumda)
         ▼
 image_fetch.py          → HİBRİT modda çalışır: sahne notundan sorgu
         (yazıldı ✅)       çıkarır, önce Wikimedia'da gerçek/tarihi foto
@@ -53,8 +52,9 @@ youtube_montaj.py       → ffmpeg ile foto sahnelerini Ken Burns
                            sürelerini yeniden ölçeklendirir, sesle
                            senkronlar, video_XX.mp4 üretir
         ▼
-youtube_upload.py       → YouTube Data API v3 ile videoyu otomatik yükler
-   (henüz yazılmadı)      (OAuth kurulumu devam ediyor)
+youtube_upload.py       → YouTube Data API v3 ile videoyu otomatik
+        (yazıldı ✅)       yükler (OAuth refresh token ile, manuel giriş
+                           gerekmez), uploaded.json'a kaydeder
         ▼
 pipeline.py             → tüm adımları sırayla çalıştıran orkestratör
    (henüz yazılmadı)
@@ -71,9 +71,11 @@ GitHub Actions workflow → kullanıcı ham ses kaydını yükleyince (veya
 anadolu-gizemleri-pipeline/
 ├── config.py                  # Tüm ayarların tek merkezi
 ├── script_parse.py            # MD dosyalarını okuyup ayrıştırır
+├── voice_postprocess.py       # Kullanıcı ses kaydını işleyen modül
 ├── google_tts_generate.py     # Seslendirme modülü (TTS alternatifi)
 ├── image_fetch.py             # Hibrit foto/video toplama modülü
 ├── youtube_montaj.py          # Ken Burns + video montaj modülü
+├── youtube_upload.py          # YouTube'a otomatik yükleme modülü
 ├── requirements.txt           # Python bağımlılıkları
 ├── content/                   # 30 adet hazır senaryo (.md, TR+EN)
 │   ├── 01_gobeklitepe_karahantepe_senaryo_tr_en_UTF8.md
@@ -99,40 +101,46 @@ anadolu-gizemleri-pipeline/
       tek dosyada, hiçbir modülde hardcode değer yok
 - [x] `script_parse.py` yazıldı ve test edildi — 30 dosyanın tamamı
       doğru şekilde ayrıştırılıyor (başlık, sahne notları, anlatım metni)
-- [x] `google_tts_generate.py` yazıldı — uzun metni cümle sınırlarına
-      saygılı şekilde parçalara bölüp Google TTS ile seslendiriyor,
-      ffmpeg ile parçaları tek dosyada birleştiriyor
+- [x] `google_tts_generate.py` yazıldı — TTS alternatifi olarak hazır
+      duruyor
 - [x] Google Cloud projesi (`usta-mugla`) üzerinde:
   - Text-to-Speech API etkinleştirildi
   - YouTube Data API v3 etkinleştirildi
   - `tts-bot` service account oluşturuldu, JSON key üretildi
-- [x] `GOOGLE_CREDENTIALS_JSON` GitHub Secrets'a eklendi
-- [x] **Karar:** TTS yerine kullanıcının kendi sesi kullanılacak —
-      ffmpeg ile "temiz stüdyo + tok + net" belgesel tonu için ses
-      işleme zinciri test edildi ve onaylandı (highpass, noise reduction,
+- [x] **Karar:** TTS yerine kullanıcının kendi sesi kullanılacak
+- [x] `voice_postprocess.py` yazıldı ve test edildi — ffmpeg ile "temiz
+      stüdyo + tok + net" belgesel tonu (highpass, noise reduction,
       compressor, hedefli EQ, loudnorm — echo/pitch değişikliği YOK)
 - [x] `image_fetch.py` yazıldı — **hibrit mod**: Wikimedia'dan gerçek
       foto, bulunamazsa Pexels'ten atmosferik video klip, o da yoksa
       Pexels foto. Fallback zinciri sayesinde hiçbir sahne medyasız
       kalmıyor.
-- [x] `PEXELS_API_KEY` alındı ve GitHub Secrets'a eklendi
 - [x] `youtube_montaj.py` yazıldı — Ken Burns (foto) + trim/loop (video)
       sahnelerini gerçek ses süresine göre ölçekleyip birleştiriyor,
       voiceover + opsiyonel arka müzik mix ediliyor
-- [x] YouTube Data API v3, Google Cloud projesinde etkinleştirildi
+- [x] YouTube OAuth kurulumu tamamlandı:
+  - OAuth Consent Screen (External, `youtube.upload` scope, test user:
+    `destek.fkdigital@gmail.com`)
+  - Web application tipi OAuth Client oluşturuldu
+  - OAuth Playground üzerinden bir kerelik yetkilendirme yapıldı,
+    kalıcı **refresh token** üretildi
+- [x] `youtube_upload.py` yazıldı — resumable upload, geçici hata
+      durumunda otomatik tekrar deneme, `uploaded.json` ile tekrar
+      yükleme koruması
+- [x] `PEXELS_API_KEY`, `GOOGLE_CREDENTIALS_JSON`, `YOUTUBE_CLIENT_SECRET`
+      (client_id + client_secret + refresh_token içeren JSON) GitHub
+      Secrets'a eklendi
 
 ## Sırada Ne Var
 
-- [ ] `voice_postprocess.py` — test edilen ffmpeg ses zincirini modül
-      haline getirmek (kullanıcının ham kaydını otomatik işleyecek)
-- [ ] YouTube OAuth kurulumu:
-  - [ ] OAuth Consent Screen (External, `youtube.upload` scope, test user)
-  - [ ] OAuth Client ID (Desktop app tipi)
-  - [ ] Refresh token üretimi (bir kerelik yetkilendirme)
-- [ ] `youtube_upload.py` — otomatik YouTube yükleme
-- [ ] `pipeline.py` — tüm adımları sırayla çalıştıran orkestratör
+- [ ] `pipeline.py` — tüm adımları (script_parse → voice_postprocess/tts
+      → image_fetch → youtube_montaj → youtube_upload) sırayla çalıştıran
+      orkestratör
 - [ ] `.github/workflows/` — kullanıcı ses kaydı yükleyince (veya cron
       ile) otomatik tetikleme
+- [ ] İlk uçtan uca test — `config.YOUTUBE_PRIVACY_STATUS` değeri
+      gerçek yayına geçmeden önce `"private"` veya `"unlisted"` yapılıp
+      test edilmeli
 
 ---
 
@@ -145,16 +153,16 @@ anadolu-gizemleri-pipeline/
 - **Wikimedia Commons + Pexels (Foto + Video API)** — hibrit görsel/video
   kaynakları
 - **ffmpeg** — ses işleme, Ken Burns efekti, video montaj, senkronizasyon
-- **YouTube Data API v3** — otomatik video yükleme
+- **YouTube Data API v3** — OAuth refresh token ile otomatik video yükleme
 - **GitHub Actions** — tüm pipeline'ın çalıştığı bulut ortamı
 
 ## Gerekli Secrets (Settings → Secrets and variables → Actions)
 
-| Secret adı                 | Açıklama                                      | Durum |
-|-----------------------------|------------------------------------------------|-------|
-| `GOOGLE_CREDENTIALS_JSON`   | TTS service account key (JSON içeriği)         | ✅ Eklendi |
-| `PEXELS_API_KEY`            | Pexels foto/video arama API anahtarı           | ✅ Eklendi |
-| `YOUTUBE_CLIENT_SECRET`     | YouTube OAuth client secret (JSON içeriği)     | ⏳ Bekliyor |
+| Secret adı                 | Açıklama                                              | Durum |
+|-----------------------------|--------------------------------------------------------|-------|
+| `GOOGLE_CREDENTIALS_JSON`   | TTS service account key (JSON içeriği)                 | ✅ Eklendi |
+| `PEXELS_API_KEY`            | Pexels foto/video arama API anahtarı                   | ✅ Eklendi |
+| `YOUTUBE_CLIENT_SECRET`     | client_id + client_secret + refresh_token (JSON)       | ✅ Eklendi |
 
 ---
 
