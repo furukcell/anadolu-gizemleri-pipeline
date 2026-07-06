@@ -1,10 +1,5 @@
 name: Anadolu Gizemleri - Video Uret ve Yukle
 
-# TETIKLEME:
-#  1) content/raw_audio/NN.mp3 dosyasi push edilince otomatik calisir
-#     (kullanici ham ses kaydini GitHub web arayuzunden yukleyince)
-#  2) Actions sekmesinden "Run workflow" ile manuel de tetiklenebilir
-#     (bu durumda hangi gunun isleneceni "day" input'undan alir)
 on:
   push:
     branches: [main]
@@ -16,13 +11,18 @@ on:
         description: "Islenecek gun numarasi (1-30)"
         required: true
         type: number
+      force_upload:
+        description: "Ayni gun daha once yuklendiyse yeniden YouTube'a yukle"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
-# uploaded.json'i repoya geri yazabilmek icin gerekli.
 permissions:
   contents: write
 
-# Ayni anda birden fazla calismasin - state/uploaded.json uzerinde
-# yaris durumu (race condition) olmasin diye.
 concurrency:
   group: anadolu-gizemleri-pipeline
   cancel-in-progress: false
@@ -36,7 +36,7 @@ jobs:
       - name: Repoyu checkout et
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # push event'inde degisen dosyayi bulmak icin en az 2 commit gerekli
+          fetch-depth: 2
 
       - name: Python kur
         uses: actions/setup-python@v5
@@ -56,14 +56,12 @@ jobs:
             DAY="${{ github.event.inputs.day }}"
             echo "[workflow] Manuel tetikleme, gun: $DAY"
           else
-            # Bu commit'te eklenen/degisen dosyalar arasinda content/raw_audio/NN.mp3 ara.
-            # Silinen dosyalar workflow'u tetiklese bile pipeline calistirilmaz.
             CHANGED_FILE=$(git diff-tree --diff-filter=AM --no-commit-id --name-only -r "$GITHUB_SHA" \
               | grep -E '^content/raw_audio/[0-9]+\.mp3$' | head -n 1)
 
             if [ -z "$CHANGED_FILE" ]; then
               echo "[workflow] HATA: Eklenen/degisen content/raw_audio/NN.mp3 dosyasi bulunamadi."
-              echo "[workflow] Not: Ses dosyasi silme commit'i pipeline calistirmez."
+              echo "[workflow] Not: Ses dosyasi silme commit'i pipeline calistirmaz."
               exit 1
             fi
 
@@ -72,6 +70,7 @@ jobs:
           fi
 
           echo "day=$DAY" >> "$GITHUB_OUTPUT"
+          printf "day_padded=%02d\n" "$DAY" >> "$GITHUB_OUTPUT"
 
       - name: Google credentials dosyasini olustur
         run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
@@ -81,6 +80,7 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
+          FORCE_REUPLOAD: ${{ github.event.inputs.force_upload || 'false' }}
         run: python pipeline.py ${{ steps.determine_day.outputs.day }}
 
       - name: Google credentials dosyasini sil (guvenlik)
@@ -107,5 +107,5 @@ jobs:
         with:
           name: debug-output-day-${{ steps.determine_day.outputs.day }}
           path: |
-            output/video_${{ steps.determine_day.outputs.day }}/
+            output/video_${{ steps.determine_day.outputs.day_padded }}/
           retention-days: 7
