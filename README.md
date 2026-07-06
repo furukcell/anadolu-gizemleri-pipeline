@@ -27,40 +27,39 @@ telefondan yapılabilir.
 ## Genel Akış
 
 ```
-content/NN_....md  (hazır senaryo, TR + EN birlikte)
+content/raw_audio/NN.mp3  (kullanıcı ses kaydı yükler)
         │
-        ▼
-script_parse.py         → TR bölümünü çeker, sahne notu + anlatım
-        (yazıldı ✅)       metnini ayırır, script_parsed.json üretir
-        ▼
-voice_postprocess.py    → Kullanıcının kendi ham ses kaydını (telefon
-        (yazıldı ✅)       kaydı) alır; ffmpeg ile temiz + tok + net
-                           belgesel tonuna çevirir, voiceover.mp3 üretir
-                           (alternatif: google_tts_generate.py ile
-                           Google Cloud TTS de hazır durumda)
-        ▼
-image_fetch.py          → HİBRİT modda çalışır: sahne notundan sorgu
-        (yazıldı ✅)       çıkarır, önce Wikimedia'da gerçek/tarihi foto
-                           arar, bulamazsa Pexels'ten atmosferik video
-                           klip, o da yoksa Pexels foto dener. Hiçbir
-                           sahne medyasız kalmaz. images_manifest.json
-                           üretir.
-        ▼
-youtube_montaj.py       → ffmpeg ile foto sahnelerini Ken Burns
-        (yazıldı ✅)       efektiyle, video sahnelerini trim/loop ile
-                           işler, gerçek ses süresine göre sahne
-                           sürelerini yeniden ölçeklendirir, sesle
-                           senkronlar, video_XX.mp4 üretir
-        ▼
-youtube_upload.py       → YouTube Data API v3 ile videoyu otomatik
-        (yazıldı ✅)       yükler (OAuth refresh token ile, manuel giriş
-                           gerekmez), uploaded.json'a kaydeder
+        ▼  [push tetikler]
+.github/workflows/generate_and_upload.yml
+        (yazıldı ✅)  → GitHub Actions'ı otomatik başlatır, gün
+                         numarasını değişen dosyadan tespit eder
         ▼
 pipeline.py             → tüm adımları sırayla çalıştıran orkestratör
-   (henüz yazılmadı)
-        ▼
-GitHub Actions workflow → kullanıcı ham ses kaydını yükleyince (veya
-   (henüz kurulmadı)       cron ile) tetiklenir, o günün videosu işlenir
+        (yazıldı ✅)
+        │
+        ├─ script_parse.py         → TR bölümünü çeker, sahne notu +
+        │    (yazıldı ✅)             anlatım metnini ayırır, script_parsed.json üretir
+        │
+        ├─ voice_postprocess.py    → Kullanıcının kendi ham ses kaydını
+        │    (yazıldı ✅)             ffmpeg ile temiz + tok + net belgesel
+        │                             tonuna çevirir, voiceover.mp3 üretir
+        │                             (alternatif: google_tts_generate.py ile
+        │                             Google Cloud TTS de hazır durumda)
+        │
+        ├─ image_fetch.py          → HİBRİT modda çalışır: sahne notundan
+        │    (yazıldı ✅)             sorgu çıkarır, önce Wikimedia'da gerçek/
+        │                             tarihi foto arar, bulamazsa Pexels'ten
+        │                             atmosferik video klip, o da yoksa Pexels
+        │                             foto dener. images_manifest.json üretir.
+        │
+        ├─ youtube_montaj.py       → ffmpeg ile foto sahnelerini Ken Burns
+        │    (yazıldı ✅)             efektiyle, video sahnelerini trim/loop
+        │                             ile işler, gerçek ses süresine göre
+        │                             ölçekler, video_XX.mp4 üretir
+        │
+        └─ youtube_upload.py       → YouTube Data API v3 ile videoyu otomatik
+             (yazıldı ✅)             yükler (OAuth refresh token ile),
+                                       uploaded.json'a kaydeder
 ```
 
 ---
@@ -70,6 +69,7 @@ GitHub Actions workflow → kullanıcı ham ses kaydını yükleyince (veya
 ```
 anadolu-gizemleri-pipeline/
 ├── config.py                  # Tüm ayarların tek merkezi
+├── pipeline.py                 # Tüm adımları sırayla çalıştıran orkestratör
 ├── script_parse.py            # MD dosyalarını okuyup ayrıştırır
 ├── voice_postprocess.py       # Kullanıcı ses kaydını işleyen modül
 ├── google_tts_generate.py     # Seslendirme modülü (TTS alternatifi)
@@ -77,10 +77,13 @@ anadolu-gizemleri-pipeline/
 ├── youtube_montaj.py          # Ken Burns + video montaj modülü
 ├── youtube_upload.py          # YouTube'a otomatik yükleme modülü
 ├── requirements.txt           # Python bağımlılıkları
+├── .github/workflows/
+│   └── generate_and_upload.yml  # Otomatik/manuel tetiklenen pipeline workflow'u
 ├── content/                   # 30 adet hazır senaryo (.md, TR+EN)
 │   ├── 01_gobeklitepe_karahantepe_senaryo_tr_en_UTF8.md
 │   ├── 02_catalhoyuk_senaryo_tr_en_UTF8.md
-│   └── ... (30 dosya)
+│   ├── ... (30 dosya)
+│   └── raw_audio/              # Kullanıcının yüklediği ham ses kayıtları (NN.mp3)
 ├── output/                    # Üretilen dosyalar (script/ses/medya/video)
 │   └── video_NN/
 │       ├── script_parsed.json
@@ -127,20 +130,24 @@ anadolu-gizemleri-pipeline/
 - [x] `youtube_upload.py` yazıldı — resumable upload, geçici hata
       durumunda otomatik tekrar deneme, `uploaded.json` ile tekrar
       yükleme koruması
+- [x] `pipeline.py` yazıldı — tüm adımları (ses kaynağı otomatik seçimi
+      dahil) sırayla çalıştırıyor, `--no-upload` ile güvenli test modu var
+- [x] `.github/workflows/generate_and_upload.yml` yazıldı — `raw_audio/*.mp3`
+      push edilince otomatik, ya da Actions sekmesinden manuel tetiklenebilir;
+      `uploaded.json`'ı otomatik commit edip repoya geri yazıyor
 - [x] `PEXELS_API_KEY`, `GOOGLE_CREDENTIALS_JSON`, `YOUTUBE_CLIENT_SECRET`
       (client_id + client_secret + refresh_token içeren JSON) GitHub
       Secrets'a eklendi
+- [x] Güvenlik önlemi: `config.YOUTUBE_PRIVACY_STATUS = "private"` yapıldı
+      — ilk testler bitmeden gerçek yayına düşmesin
 
 ## Sırada Ne Var
 
-- [ ] `pipeline.py` — tüm adımları (script_parse → voice_postprocess/tts
-      → image_fetch → youtube_montaj → youtube_upload) sırayla çalıştıran
-      orkestratör
-- [ ] `.github/workflows/` — kullanıcı ses kaydı yükleyince (veya cron
-      ile) otomatik tetikleme
-- [ ] İlk uçtan uca test — `config.YOUTUBE_PRIVACY_STATUS` değeri
-      gerçek yayına geçmeden önce `"private"` veya `"unlisted"` yapılıp
-      test edilmeli
+- [ ] **İlk uçtan uca test:** `content/raw_audio/01.mp3` yüklenip pipeline'ın
+      tamamının doğru çalıştığının teyit edilmesi (private videoyla)
+- [ ] Test başarılı olursa `config.YOUTUBE_PRIVACY_STATUS` değerinin
+      `"public"` yapılması
+- [ ] Kalan 29 gün için ses kayıtlarının sırayla yüklenmesi
 
 ---
 
@@ -163,6 +170,15 @@ anadolu-gizemleri-pipeline/
 | `GOOGLE_CREDENTIALS_JSON`   | TTS service account key (JSON içeriği)                 | ✅ Eklendi |
 | `PEXELS_API_KEY`            | Pexels foto/video arama API anahtarı                   | ✅ Eklendi |
 | `YOUTUBE_CLIENT_SECRET`     | client_id + client_secret + refresh_token (JSON)       | ✅ Eklendi |
+
+## Workflow Nasıl Tetiklenir
+
+**Otomatik:** `content/raw_audio/` klasörüne `NN.mp3` formatında bir dosya
+yükleyip commit edince (örn. `03.mp3`), workflow otomatik başlar ve o günün
+videosunu üretip yükler.
+
+**Manuel:** GitHub → **Actions** sekmesi → "Anadolu Gizemleri - Video Uret
+ve Yukle" → **Run workflow** → gün numarasını yaz → çalıştır.
 
 ---
 
