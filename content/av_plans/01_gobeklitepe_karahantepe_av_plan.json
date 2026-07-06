@@ -1,0 +1,716 @@
+{
+  "day": 1,
+  "title": "Göbeklitepe ve Karahantepe — İnsanlık İlk Tapınağını Neden Bilerek Toprağa Gömdü?",
+  "mode": "av_plan",
+  "duration_target": "06:00",
+  "global_rules": {
+    "visual": {
+      "video_only": true,
+      "allow_photos": false,
+      "allow_wikimedia": false,
+      "allow_ken_burns": false,
+      "min_clip_seconds": 5,
+      "max_clip_seconds": 12,
+      "avoid": [
+        "lycia",
+        "lycian",
+        "pinara",
+        "ephesus",
+        "efes",
+        "roman ruins",
+        "greek ruins",
+        "pamukkale",
+        "hierapolis",
+        "perge",
+        "side",
+        "miletus",
+        "troy",
+        "troya",
+        "truva",
+        "hattusa",
+        "ani",
+        "modern tourists",
+        "modern city",
+        "cars",
+        "logos",
+        "watermark"
+      ]
+    },
+    "audio": {
+      "always_background_bed": true,
+      "no_vocals": true,
+      "duck_music_under_voice": true,
+      "voice_priority": true,
+      "target_music_volume": 0.12,
+      "target_sfx_volume": 0.18,
+      "fade_between_scenes_seconds": 1.2
+    }
+  },
+  "music_pool_suggestions": {
+    "folders": {
+      "music": "assets/audio/music/",
+      "sfx": "assets/audio/sfx/"
+    },
+    "music_files": [
+      "dark_ambient_intro.mp3",
+      "ancient_mystery_drone.mp3",
+      "low_cinematic_pulse.mp3",
+      "subtle_tribal_percussion.mp3",
+      "karahantepe_dark_room.mp3",
+      "burial_tension.mp3",
+      "final_mystery_pad.mp3"
+    ],
+    "sfx_files": [
+      "wind_low.mp3",
+      "stone_scrape_soft.mp3",
+      "soft_whoosh.mp3",
+      "deep_hit.mp3",
+      "torch_fire.mp3",
+      "soil_fall.mp3",
+      "stone_rumble.mp3",
+      "question_hit.mp3",
+      "burial_boom.mp3",
+      "cave_reverb_texture.mp3"
+    ]
+  },
+  "segments": [
+    {
+      "id": "s00_intro_dark_pillars",
+      "start": "00:00",
+      "end": "00:20",
+      "narrative": "Size insanlık tarihinin nasıl başladığını anlattılar.",
+      "visual_direction": "Siyah ekranla başla. 2 saniye tamamen siyah. Sonra yavaş yavaş sisli karanlık taş sütun gölgeleri belirsin. Kamera taşların arasında ağır ağır ilerliyormuş gibi his versin.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "cinematic dark ancient stone pillars night fog slow camera movement no people mysterious documentary",
+        "mysterious neolithic stone temple cinematic reconstruction dark fog",
+        "ancient stone monoliths night fog cinematic dolly shot"
+      ],
+      "on_screen_text": [],
+      "music_mood": "dark_ambient_intro",
+      "music_intensity": 0.35,
+      "music_notes": "Çok düşük volümlü deep dark drone. 0:15'e doğru hafif yükselsin.",
+      "sfx": [
+        {
+          "name": "wind_low",
+          "at": "00:00",
+          "volume": 0.22
+        },
+        {
+          "name": "stone_scrape_soft",
+          "at": "00:06",
+          "volume": 0.12
+        },
+        {
+          "name": "deep_hit",
+          "at": "00:08",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s01_history_order_breaks",
+      "start": "00:20",
+      "end": "00:38",
+      "narrative": "Önce mağara, sonra tarım, köyler, şehirler... Peki ya bu sıralama yanlışsa?",
+      "visual_direction": "Mağara ateşi, buğday/tarım, ilkel köy ve taş tapınak arasında kısa tempolu ama ağır geçişler. Her plan 4-5 saniye.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "prehistoric cave fire silhouettes cinematic",
+        "ancient wheat field cinematic wind",
+        "neolithic village reconstruction cinematic",
+        "ancient stone temple reconstruction cinematic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "ancient_mystery_drone",
+      "music_intensity": 0.45,
+      "music_notes": "Drone devam etsin, hafif ritmik pulse eklensin.",
+      "sfx": [
+        {
+          "name": "torch_fire",
+          "at": "00:20",
+          "volume": 0.16
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "00:28",
+          "volume": 0.1
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "00:34",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s02_massive_stones_before_wheat",
+      "start": "00:38",
+      "end": "00:58",
+      "narrative": "Ya insanlık, buğdayı evcilleştirmeden önce tonlarca ağırlıktaki taşları kesip diktiyse?",
+      "visual_direction": "Dev taş blokların kesildiği, sürüklendiği veya taşındığı temsili sahne. İnsan yüzleri net görünmesin; silüet/dust/sunset iyi olur.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "prehistoric people dragging massive stone block cinematic reconstruction dust sunset no modern tools",
+        "ancient workers moving megalithic stone without wheels cinematic",
+        "prehistoric quarry stone block extraction primitive tools cinematic reconstruction"
+      ],
+      "on_screen_text": [],
+      "music_mood": "low_cinematic_pulse",
+      "music_intensity": 0.55,
+      "music_notes": "Tension pulse belirginleşsin. Altta düşük davul benzeri tekil vuruşlar.",
+      "sfx": [
+        {
+          "name": "stone_scrape_soft",
+          "at": "00:40",
+          "volume": 0.18
+        },
+        {
+          "name": "stone_rumble",
+          "at": "00:48",
+          "volume": 0.14
+        },
+        {
+          "name": "wind_low",
+          "at": "00:38",
+          "volume": 0.14
+        }
+      ]
+    },
+    {
+      "id": "s03_why_buried_question",
+      "start": "00:58",
+      "end": "01:15",
+      "narrative": "Eğer bu yapılar bu kadar önemliyse, onları yapan insanlar neden bir gün geri dönüp hepsini toprakla kapattı?",
+      "visual_direction": "Taş tapınağın üstüne yavaşça toprak/moloz inmesi. Karanlık kapanma. Yazı vurucu gelsin.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "ancient stone temple slowly buried by earth cinematic reconstruction dramatic no people",
+        "ancient megalithic temple covered with soil cinematic burial",
+        "prehistoric stone circle buried by earth dark cinematic"
+      ],
+      "on_screen_text": [
+        {
+          "text": "NEDEN GÖMÜLDÜ?",
+          "start": "01:08",
+          "end": "01:13",
+          "style": "large_center_dark"
+        }
+      ],
+      "music_mood": "burial_tension",
+      "music_intensity": 0.65,
+      "music_notes": "Kısa yükseliş, yazı geldiğinde low boom, sonra karanlık drone.",
+      "sfx": [
+        {
+          "name": "soil_fall",
+          "at": "00:59",
+          "volume": 0.2
+        },
+        {
+          "name": "burial_boom",
+          "at": "01:08",
+          "volume": 0.2
+        },
+        {
+          "name": "deep_hit",
+          "at": "01:13",
+          "volume": 0.12
+        }
+      ]
+    },
+    {
+      "id": "s04_gobeklitepe_first_reveal",
+      "start": "01:15",
+      "end": "01:32",
+      "narrative": "Bugün Şanlıurfa’nın sessiz tepelerinde, insanlık tarihinin en büyük sorularından birine bakıyoruz.",
+      "visual_direction": "İlk gerçek yer hissi. Göbeklitepe drone/genel alan görüntüsü veya arkeolojik alan geniş planı.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "Göbekli Tepe aerial footage archaeological site",
+        "Gobekli Tepe drone footage stone circles",
+        "archaeological site stone circles aerial cinematic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "ancient_mystery_drone",
+      "music_intensity": 0.5,
+      "music_notes": "Gizemden bilgiye geçiş. Daha havadar ama hâlâ karanlık pad.",
+      "sfx": [
+        {
+          "name": "wind_low",
+          "at": "01:15",
+          "volume": 0.16
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "01:17",
+          "volume": 0.08
+        }
+      ]
+    },
+    {
+      "id": "s05_t_shaped_pillars",
+      "start": "01:32",
+      "end": "01:48",
+      "narrative": "Göbeklitepe ve Karahantepe. Bunlar sadece arkeolojik alanlar değil.",
+      "visual_direction": "Kamera T biçimli taş sütunlara yaklaşmalı. Sütunlar net olmalı. Düz taş kalıntısı yetmez.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "T shaped stone pillars ancient temple slow dolly in cinematic archaeology",
+        "Gobekli Tepe T-shaped pillars close up video",
+        "neolithic T shaped monoliths cinematic reconstruction"
+      ],
+      "on_screen_text": [],
+      "music_mood": "low_cinematic_pulse",
+      "music_intensity": 0.55,
+      "music_notes": "Hafif gerilimli yaylı/pad ve altta çok hafif pulse.",
+      "sfx": [
+        {
+          "name": "stone_scrape_soft",
+          "at": "01:36",
+          "volume": 0.1
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "01:42",
+          "volume": 0.08
+        }
+      ]
+    },
+    {
+      "id": "s06_deep_time_11500_years",
+      "start": "01:48",
+      "end": "02:12",
+      "narrative": "Göbeklitepe yaklaşık 11 bin 500 yıl öncesine tarihleniyor. Piramitlerden, Stonehenge’den ve büyük şehirlerden eski.",
+      "visual_direction": "Zaman katmanları, kum/toz, piramit silüeti, Stonehenge benzeri taşlar, tekrar daha eski ve karanlık neolitik sütunlar.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "ancient timeline cinematic sand particles deep time",
+        "egypt pyramids silhouette cinematic desert",
+        "stonehenge mist cinematic stones",
+        "ancient neolithic stone pillars darker older cinematic"
+      ],
+      "on_screen_text": [
+        {
+          "text": "11.500 YIL ÖNCE",
+          "start": "01:52",
+          "end": "01:58",
+          "style": "small_center"
+        }
+      ],
+      "music_mood": "ancient_mystery_drone",
+      "music_intensity": 0.55,
+      "music_notes": "Küçük doz epic history tonu. Karşılaştırmalarda kısa vurgu.",
+      "sfx": [
+        {
+          "name": "soft_whoosh",
+          "at": "01:53",
+          "volume": 0.1
+        },
+        {
+          "name": "question_hit",
+          "at": "01:58",
+          "volume": 0.1
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "02:05",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s07_animal_reliefs_symbols",
+      "start": "02:12",
+      "end": "02:36",
+      "narrative": "T biçimli taş sütunlarda yılanlar, tilkiler, yaban domuzları, akbabalar ve çözülemeyen semboller var.",
+      "visual_direction": "Taş kabartma yakın planları. Gerçek Göbeklitepe kabartması olursa çok iyi; yoksa taş yüzeye oyulmuş hayvan sembolleri CGI/stock.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "ancient stone animal relief carving close up snake fox boar vulture cinematic macro torch light",
+        "Gobekli Tepe animal relief close up video",
+        "mysterious ancient animal symbols carved in stone torch light cinematic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "dark_symbolic_texture",
+      "music_intensity": 0.5,
+      "music_notes": "Daha ince, ürkütücü ve taşın içinden geliyormuş gibi ambience.",
+      "sfx": [
+        {
+          "name": "torch_fire",
+          "at": "02:12",
+          "volume": 0.12
+        },
+        {
+          "name": "stone_scrape_soft",
+          "at": "02:18",
+          "volume": 0.12
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "02:28",
+          "volume": 0.08
+        }
+      ]
+    },
+    {
+      "id": "s08_decoration_belief_fear",
+      "start": "02:36",
+      "end": "02:58",
+      "narrative": "Bu semboller sadece süs müydü? Yoksa unutulmuş bir inancın ve insanlığın ilk büyük korkularının izleri miydi?",
+      "visual_direction": "Karanlık taş yüzeyler, semboller üzerinde ateş gölgesi, soru kelimeleriyle ritimli vurgu.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "mysterious ancient symbols carved in stone torch light flicker slow camera movement dark documentary",
+        "ancient carved stone symbols dramatic shadows cinematic",
+        "prehistoric symbols on stone dark torchlight cinematic"
+      ],
+      "on_screen_text": [
+        {
+          "text": "SÜS MÜ?",
+          "start": "02:40",
+          "end": "02:43",
+          "style": "center_flash"
+        },
+        {
+          "text": "İNANÇ MI?",
+          "start": "02:45",
+          "end": "02:48",
+          "style": "center_flash"
+        },
+        {
+          "text": "KORKU MU?",
+          "start": "02:51",
+          "end": "02:55",
+          "style": "center_flash"
+        }
+      ],
+      "music_mood": "low_cinematic_pulse",
+      "music_intensity": 0.65,
+      "music_notes": "Gerilim ve pulse artar. Sorularda kısa düşük vuruşlar.",
+      "sfx": [
+        {
+          "name": "question_hit",
+          "at": "02:40",
+          "volume": 0.14
+        },
+        {
+          "name": "question_hit",
+          "at": "02:45",
+          "volume": 0.14
+        },
+        {
+          "name": "question_hit",
+          "at": "02:51",
+          "volume": 0.14
+        }
+      ]
+    },
+    {
+      "id": "s09_no_metal_no_wheel",
+      "start": "02:58",
+      "end": "03:24",
+      "narrative": "Bu insanlarda büyük şehir, metal alet, tekerlekli taşıma sistemi ve modern mühendislik yoktu.",
+      "visual_direction": "Taş ocağı, el aletleri, büyük bloklar, insanlar/silüetler. Modern hiçbir şey görünmeyecek.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "prehistoric quarry stone block extraction primitive tools cinematic reconstruction",
+        "ancient workers moving megalithic stone without wheels dust dramatic light",
+        "neolithic construction massive stone block cinematic reconstruction"
+      ],
+      "on_screen_text": [],
+      "music_mood": "subtle_tribal_percussion",
+      "music_intensity": 0.6,
+      "music_notes": "Orta yoğunlukta sinematik gerilim. Tribal percussion çok hafif.",
+      "sfx": [
+        {
+          "name": "stone_scrape_soft",
+          "at": "03:02",
+          "volume": 0.16
+        },
+        {
+          "name": "stone_rumble",
+          "at": "03:10",
+          "volume": 0.14
+        },
+        {
+          "name": "deep_hit",
+          "at": "03:18",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s10_belief_before_agriculture",
+      "start": "03:24",
+      "end": "03:47",
+      "narrative": "Belki de önce inanç geldi. Belki tarım, bu büyük buluşmaların sonucu olarak güçlendi.",
+      "visual_direction": "Buğday tarlasından karanlık taş tapınağa dissolve. Gerilimden düşünsel keşif tonuna geç.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "wheat field dissolving into ancient stone temple cinematic transition",
+        "ancient belief before agriculture cinematic reconstruction",
+        "neolithic ritual temple and wheat field symbolic cinematic"
+      ],
+      "on_screen_text": [
+        {
+          "text": "BELKİ DE ÖNCE İNANÇ GELDİ",
+          "start": "03:34",
+          "end": "03:43",
+          "style": "soft_center"
+        }
+      ],
+      "music_mood": "ancient_mystery_drone",
+      "music_intensity": 0.55,
+      "music_notes": "Bir anlığına açılan, düşünsel ve keşif hissi veren pad.",
+      "sfx": [
+        {
+          "name": "wind_low",
+          "at": "03:24",
+          "volume": 0.14
+        },
+        {
+          "name": "soft_whoosh",
+          "at": "03:34",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s11_hunter_gatherer_gathering",
+      "start": "03:47",
+      "end": "04:18",
+      "narrative": "Küçük gruplar halinde yaşayan insanlar belirli dönemlerde bu tepeye geliyor; belki törenler yapıyordu.",
+      "visual_direction": "Gün batımı/geceye yakın. Küçük insan grupları tepede toplanıyor, ateşler yanıyor. Uzaktan geniş plan.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "hunter gatherer groups walking toward hill campfires prehistoric ritual gathering cinematic wide shot",
+        "prehistoric people gathering around fire ancient hill cinematic reconstruction",
+        "neolithic ritual gathering campfires stone temple background cinematic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "subtle_tribal_percussion",
+      "music_intensity": 0.55,
+      "music_notes": "Kadim hissi veren ambient + çok hafif tribal vurmalı.",
+      "sfx": [
+        {
+          "name": "torch_fire",
+          "at": "03:49",
+          "volume": 0.18
+        },
+        {
+          "name": "wind_low",
+          "at": "03:47",
+          "volume": 0.12
+        },
+        {
+          "name": "cave_reverb_texture",
+          "at": "04:05",
+          "volume": 0.08
+        }
+      ]
+    },
+    {
+      "id": "s12_who_organized",
+      "start": "04:18",
+      "end": "04:38",
+      "narrative": "Ama bu kadar büyük bir organizasyonu kim yönetti? Bir şaman mı? Bir lider sınıfı mı?",
+      "visual_direction": "Ateş başında yüzü görünmeyen ritüel figürü/şaman silüeti. İnsanlar halka gibi. Taşlar arkada.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "prehistoric shaman silhouette by fire ancient stone pillars background ritual atmosphere cinematic",
+        "ancient ritual leader silhouette campfire neolithic temple cinematic",
+        "hunter gatherer shaman fire circle cinematic reconstruction no fantasy magic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "low_cinematic_pulse",
+      "music_intensity": 0.6,
+      "music_notes": "Karanlık tona dönüş. Soruların sonunda minik low hit.",
+      "sfx": [
+        {
+          "name": "torch_fire",
+          "at": "04:18",
+          "volume": 0.16
+        },
+        {
+          "name": "question_hit",
+          "at": "04:27",
+          "volume": 0.1
+        },
+        {
+          "name": "question_hit",
+          "at": "04:33",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s13_karahantepe_enters",
+      "start": "04:38",
+      "end": "05:02",
+      "narrative": "Karahantepe’deki yapılar, insan betimlemeleri ve taş düzenlemeler Göbeklitepe’nin tek başına olmadığını gösteriyor.",
+      "visual_direction": "Karahantepe gerçek kazı alanı veya dar taş oda rekonstrüksiyonu. Göbeklitepe’den daha kapalı, karanlık ve rahatsız edici olmalı.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "Karahantepe archaeological site video",
+        "ancient narrow stone chamber archaeological reconstruction dark room slow camera movement",
+        "neolithic stone chamber human head sculpture dark archaeological reconstruction torch light"
+      ],
+      "on_screen_text": [
+        {
+          "text": "KARAHANTEPE",
+          "start": "04:42",
+          "end": "04:48",
+          "style": "place_title"
+        }
+      ],
+      "music_mood": "karahantepe_dark_room",
+      "music_intensity": 0.65,
+      "music_notes": "Ton değişsin. Kapalı oda, soğuk doku, daha rahatsız edici ambience.",
+      "sfx": [
+        {
+          "name": "cave_reverb_texture",
+          "at": "04:38",
+          "volume": 0.16
+        },
+        {
+          "name": "stone_scrape_soft",
+          "at": "04:48",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s14_human_heads_dark_rooms",
+      "start": "05:02",
+      "end": "05:24",
+      "narrative": "İnsan başları, beden vurguları, karanlık odalar, taşların arasına gizlenmiş figürler...",
+      "visual_direction": "Taş oda içinde insan başı benzeri heykel/gölge/figür yakın planları. Ürkütücü ama korku filmi değil, gizem belgeseli.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "neolithic stone chamber human head sculpture dark archaeological reconstruction torch light",
+        "ancient human head stone carving close up cinematic shadows",
+        "dark prehistoric stone chamber mysterious human figure carving cinematic"
+      ],
+      "on_screen_text": [],
+      "music_mood": "karahantepe_dark_room",
+      "music_intensity": 0.65,
+      "music_notes": "İnce tiz doku + düşük drone. Rahatsız edici sembolizm.",
+      "sfx": [
+        {
+          "name": "cave_reverb_texture",
+          "at": "05:02",
+          "volume": 0.14
+        },
+        {
+          "name": "torch_fire",
+          "at": "05:06",
+          "volume": 0.1
+        },
+        {
+          "name": "stone_rumble",
+          "at": "05:18",
+          "volume": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s15_burial_break",
+      "start": "05:24",
+      "end": "05:42",
+      "narrative": "Ama hikâyenin en gizemli bölümü şimdi başlıyor.",
+      "visual_direction": "Yapının üzerinin toprakla kapanması. Ekran karanlığa yaklaşsın. Bu sahne ana dramatik kırılma.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "ancient megalithic temple being covered with soil burial ritual cinematic reconstruction slow motion",
+        "ancient stone temple slowly buried by earth cinematic dramatic",
+        "prehistoric ruins covered by falling soil dark cinematic"
+      ],
+      "on_screen_text": [
+        {
+          "text": "BİR GÜN… ÜZERİNİ KAPATTILAR.",
+          "start": "05:30",
+          "end": "05:39",
+          "style": "large_center_dark"
+        }
+      ],
+      "music_mood": "burial_tension",
+      "music_intensity": 0.7,
+      "music_notes": "Kısa yükseliş, güçlü ama kontrollü dramatik düşüş.",
+      "sfx": [
+        {
+          "name": "soil_fall",
+          "at": "05:24",
+          "volume": 0.22
+        },
+        {
+          "name": "burial_boom",
+          "at": "05:30",
+          "volume": 0.22
+        },
+        {
+          "name": "stone_rumble",
+          "at": "05:36",
+          "volume": 0.14
+        }
+      ]
+    },
+    {
+      "id": "s16_final_question",
+      "start": "05:42",
+      "end": "06:00",
+      "narrative": "Neden bu kadar önemli bir merkez gözden kayboldu?",
+      "visual_direction": "Toprak altında kalan taş sütun. Kamera geriye çekilir. Üstte sessiz Şanlıurfa tepeleri. Son 2 saniye siyah.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "search_queries": [
+        "buried ancient stone pillar underground slow camera pullback dark soil mysterious documentary",
+        "silent hills of southeastern anatolia at dusk cinematic",
+        "ancient buried temple underground cinematic mystery"
+      ],
+      "on_screen_text": [
+        {
+          "text": "NEDEN?",
+          "start": "05:53",
+          "end": "05:58",
+          "style": "single_word_center"
+        }
+      ],
+      "music_mood": "final_mystery_pad",
+      "music_intensity": 0.4,
+      "music_notes": "Müzik yavaş yavaş çözülür. Son 2 saniyede rüzgâr ve taş kapanış hissi kalsın.",
+      "sfx": [
+        {
+          "name": "wind_low",
+          "at": "05:42",
+          "volume": 0.16
+        },
+        {
+          "name": "stone_scrape_soft",
+          "at": "05:55",
+          "volume": 0.1
+        },
+        {
+          "name": "deep_hit",
+          "at": "05:58",
+          "volume": 0.08
+        }
+      ]
+    }
+  ]
+}
