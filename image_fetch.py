@@ -1,28 +1,19 @@
 """
 image_fetch.py
 ---------------
-HIBRIT MOD: her sahne icin ya FOTO (Wikimedia/Pexels) ya da VIDEO KLIP
-(Pexels Videos) bulunur. Karar mantigi:
+Dinamik belgesel medya toplama modulu.
 
-  1) Once Wikimedia Commons'ta sahneye ozgu GERCEK/TARIHI foto aranir.
-     GitHub Actions icinde 403 yememek icin Wikimedia isteklerine User-Agent eklenir.
-  2) Bulunamazsa Pexels FOTO aranir. Tarih belgeseli icin gercek/fotografik
-     gorsel, alakasiz stok videodan daha guvenli oldugu icin video oncesine alindi.
-  3) Bulunamazsa Pexels VIDEO API'sinde "AI generated / cinematic" tarzinda
-     atmosferik video aranir. Bu adim sifirdan video URETMEZ; AI/cinematic stok
-     video BULMAYA calisir.
-  4) O da bulunamazsa normal atmosferik Pexels video aranir.
-  5) Hicbiri olmazsa jenerik fallback sorgularla foto/video sirayla denenir.
+Bu surum tek bir fotografi dakikalarca gostermemek icin:
+- sahneleri intro/atmosfer/tarihi_detay/teori/mixed olarak siniflandirir
+- intro ve atmosfer sahnelerinde video onceligi verir
+- tarihi mekan/detay sahnelerinde gercek fotograf onceligi verir
+- ayni video icinde ayni medya URL'sini tekrar kullanmaz
+- her sahne icin 1-3 medya parcasi toplar ve images_manifest.json icine
+  media_items listesi olarak yazar
 
-Boylece: spesifik sahneler gercek tarihi fotografla, fotograf bulunamayan
-atmosferik/genel sahneler ise once AI/cinematic stok video, sonra normal stok
-video ile desteklenir.
-
-Cikti: output/video_NN/media/scene_XX.jpg|mp4 + images_manifest.json
-
-Not: estimated_seconds burada kelime sayisina gore KABA bir tahmindir.
-youtube_montaj.py gercek voiceover suresine gore bunu yeniden olcekler.
-Video klipler de o sureye gore trim/loop edilecek.
+Cikti:
+  output/video_NN/media/scene_XX_YY.jpg|mp4
+  output/video_NN/images_manifest.json
 """
 
 import json
@@ -35,11 +26,6 @@ import requests
 
 import config
 
-# =========================================================
-# AYARLAR
-# =========================================================
-# Ortalama konusma hizi: Google TTS speaking_rate=0.97 icin
-# tr-TR Wavenet sesler ~2.4 kelime/saniye civarindadir (kaba tahmin).
 WORDS_PER_SECOND = 2.4 * config.GOOGLE_TTS_SPEAKING_RATE
 
 WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
@@ -51,43 +37,20 @@ WIKIMEDIA_HEADERS = {
     "Accept": "application/json",
 }
 
-FALLBACK_QUERIES = [
-    "ancient Anatolia ruins",
-    "Anatolian archaeological site",
-    "Turkey ancient civilization",
-    "neolithic archaeological site",
-]
-
-FALLBACK_AI_VIDEO_QUERIES = [
-    "ai generated cinematic ancient ruins",
-    "ai generated archaeological excavation",
-    "cinematic ancient temple mysterious",
-]
-
-FALLBACK_VIDEO_QUERIES = [
-    "ancient ruins fog",
-    "mysterious ancient temple",
-    "torch flame night",
-    "archaeological excavation",
-]
-
 REQUEST_TIMEOUT = 15
 RETRY_COUNT = 2
 RETRY_SLEEP = 2
 
-# Cok genel / TTS'e sizmis sahne notu kaliplarini gorsel sorgusuna
-# katmadan once temizlemek icin
 NOISE_WORDS = {
     "ekrana", "gelir", "gorunur", "goruntusu", "sahne", "kamera",
     "yakin", "cekim", "gecis", "efekt", "yavasca", "hafif", "baslar",
-    "eski", "bir", "ve", "ile", "olan", "gelen", "derinden",
+    "eski", "bir", "ve", "ile", "olan", "gelen", "derinden", "detay",
 }
 
-# Anadolu Gizemleri bolumlerinde gecen spesifik yerleri API'lerin daha iyi
-# anlayacagi Ingilizce/ascii sorgulara cevirir.
 KNOWN_SITE_QUERY_MAP = {
     "gobeklitepe": "gobekli tepe archaeological site stone pillars",
     "gobekli tepe": "gobekli tepe archaeological site stone pillars",
+    "gobekli": "gobekli tepe archaeological site stone pillars",
     "karahantepe": "karahantepe archaeological site stone chambers",
     "catalhoyuk": "catalhoyuk neolithic settlement archaeology",
     "catal hoyuk": "catalhoyuk neolithic settlement archaeology",
@@ -101,64 +64,73 @@ KNOWN_SITE_QUERY_MAP = {
     "pamukkale": "hierapolis pamukkale ancient city turkey",
     "ani": "ani ruins turkey medieval city",
     "gordion": "gordion ancient city tumulus turkey",
-    "atalhoyuk": "catalhoyuk neolithic settlement archaeology",
 }
 
 TURKISH_TERM_MAP = {
-    "siyah": "dark",
-    "ekran": "screen",
-    "ruzgar": "wind",
-    "golge": "shadow",
-    "tas": "stone",
-    "sutun": "pillar",
-    "sutunlar": "pillars",
-    "dikilitas": "standing stone",
-    "dikilitaslar": "standing stones",
-    "kalinti": "ruins",
-    "kalintilar": "ruins",
-    "kazi": "excavation",
-    "alan": "site",
-    "tapinak": "temple",
-    "oda": "chamber",
-    "odalar": "chambers",
-    "karanlik": "dark",
-    "sis": "mist",
-    "ates": "fire",
-    "mesale": "torch",
-    "hayvan": "animal",
-    "kabartma": "relief carving",
-    "kabartmalari": "relief carvings",
-    "bas": "head",
-    "insan": "human",
-    "figür": "figure",
-    "figur": "figure",
-    "toprak": "earth",
-    "arkeolojik": "archaeological",
-    "havadan": "aerial view",
+    "siyah": "dark", "ekran": "screen", "ruzgar": "wind",
+    "golge": "shadow", "tas": "stone", "sutun": "pillar",
+    "sutunlar": "pillars", "dikilitas": "standing stone",
+    "dikilitaslar": "standing stones", "kalinti": "ruins",
+    "kalintilar": "ruins", "kazi": "excavation", "alan": "site",
+    "tapinak": "temple", "oda": "chamber", "odalar": "chambers",
+    "karanlik": "dark", "sis": "mist", "ates": "fire",
+    "mesale": "torch", "hayvan": "animal", "kabartma": "relief carving",
+    "kabartmalari": "relief carvings", "bas": "head", "insan": "human",
+    "figur": "figure", "figür": "figure", "toprak": "earth",
+    "arkeolojik": "archaeological", "havadan": "aerial view",
     "animasyon": "cinematic reconstruction",
 }
 
+FALLBACK_PHOTO_QUERIES = [
+    "gobekli tepe archaeological site",
+    "karahantepe archaeological site",
+    "neolithic stone pillars archaeology",
+    "ancient anatolia ruins",
+    "archaeological excavation turkey",
+]
 
-# =========================================================
-# YARDIMCI FONKSIYONLAR
-# =========================================================
+FALLBACK_AI_VIDEO_QUERIES = [
+    "ai generated cinematic ancient ruins",
+    "ai generated archaeological excavation",
+    "cinematic ancient temple mysterious",
+    "neolithic stone temple cinematic reconstruction",
+]
+
+FALLBACK_VIDEO_QUERIES = [
+    "ancient ruins fog",
+    "mysterious ancient temple",
+    "torch flame night",
+    "archaeological excavation",
+    "dark ancient ruins cinematic",
+]
+
+
 def _turkish_to_ascii(text: str) -> str:
-    """Turkce karakterleri arama sorgusu icin sadelestirir (API'ler ascii'de daha iyi calisir)."""
     tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
     text = text.translate(tr_map)
     text = unicodedata.normalize("NFKD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
-    return text
+    return text.encode("ascii", "ignore").decode("ascii")
 
 
 def _normalized(text: str) -> str:
     return _turkish_to_ascii(text or "").lower()
 
 
+def _unique(items):
+    seen = set()
+    out = []
+    for item in items:
+        item = (item or "").strip()
+        if item and item not in seen:
+            out.append(item)
+            seen.add(item)
+    return out
+
+
 def _known_site_query(text: str) -> str | None:
-    text_norm = _normalized(text)
+    norm = _normalized(text)
     for key, query in KNOWN_SITE_QUERY_MAP.items():
-        if key in text_norm:
+        if key in norm:
             return query
     return None
 
@@ -172,13 +144,43 @@ def _map_visual_words(words):
     return mapped
 
 
+def classify_scene(index: int, scene_note: str, narration: str, day_title: str) -> str:
+    text = _normalized(f"{day_title} {scene_note} {narration}")
+
+    if index == 0:
+        return "intro"
+
+    historical_terms = [
+        "gobekli", "karahantepe", "catalhoyuk", "hattusa", "troya", "truva",
+        "sutun", "dikilitas", "kabartma", "kazi alani", "tas oda",
+        "insan basi", "hayvan", "arkeolojik", "kalinti",
+    ]
+    atmosphere_terms = [
+        "siyah ekran", "ruzgar", "sis", "gece", "karanlik", "ates",
+        "mesale", "golge", "yildiz", "ekran kararir", "animasyon",
+        "topragin", "kapattigi", "gizemli",
+    ]
+    theory_terms = [
+        "neden", "bilerek", "gomdu", "gomuldu", "ritu", "inanc", "soru",
+        "belki", "korku", "sembol", "bilinmeyen", "sir", "sirlar",
+    ]
+
+    hist_score = sum(1 for t in historical_terms if t in text)
+    atm_score = sum(1 for t in atmosphere_terms if t in text)
+    theory_score = sum(1 for t in theory_terms if t in text)
+
+    if atm_score >= 2 and hist_score == 0:
+        return "atmosphere"
+    if theory_score >= 2 and hist_score <= 1:
+        return "theory"
+    if hist_score >= 1:
+        return "historical_detail"
+    if atm_score >= 1:
+        return "atmosphere"
+    return "mixed"
+
+
 def build_query_from_scene_note(scene_note: str, day_title: str) -> str:
-    """
-    Sahne notundan kisa ve oz bir Ingilizce/ascii arama sorgusu uretir.
-    Spesifik Anadolu alanlari icin known-site map kullanir; boylece
-    "siyah ekran / ruzgar" gibi genel sahnelerde bile bolumun asil mekanina
-    ait daha dogru fotograf aramasi yapilir.
-    """
     combined = f"{day_title or ''} {scene_note or ''}"
     known_query = _known_site_query(combined)
 
@@ -186,90 +188,142 @@ def build_query_from_scene_note(scene_note: str, day_title: str) -> str:
         return known_query or _turkish_to_ascii(day_title)
 
     note = _normalized(scene_note)
-
-    # Gurultu kelimelerini at
     words = re.findall(r"[a-z0-9]+", note)
     words = [w for w in words if w not in NOISE_WORDS and len(w) > 2]
     mapped_words = _map_visual_words(words)
 
-    # Known-site varsa ana mekan sorgusunu one al; sahneye ozgu 2-3 kelime ekle.
     if known_query:
         visual_tail = " ".join(mapped_words[:3]).strip()
-        if visual_tail:
-            return f"{known_query} {visual_tail}"
-        return known_query
+        return f"{known_query} {visual_tail}".strip()
 
-    # En fazla 7 kelimeyle sinirla, cok uzun sorgu API'lerde kotu sonuc verir
     query = " ".join(mapped_words[:7]).strip()
+    return query or _turkish_to_ascii(day_title)
 
-    if not query:
-        query = _turkish_to_ascii(day_title)
 
-    return query
+def build_photo_query_variants(scene_note: str, day_title: str, scene_type: str):
+    text = _normalized(f"{day_title} {scene_note}")
+    base = build_query_from_scene_note(scene_note, day_title)
+    known = _known_site_query(text)
+
+    variants = [base, known]
+
+    if "gobekli" in text:
+        variants += [
+            "gobekli tepe archaeological site",
+            "gobekli tepe stone pillars",
+            "gobekli tepe animal relief carving",
+            "gobekli tepe excavation",
+            "gobekli tepe aerial view",
+        ]
+    if "karahantepe" in text:
+        variants += [
+            "karahantepe archaeological site",
+            "karahantepe stone chambers",
+            "karahantepe human head sculpture",
+            "karahantepe excavation",
+        ]
+    if "kabartma" in text or "hayvan" in text:
+        variants += [
+            "gobekli tepe animal relief",
+            "neolithic animal relief carving",
+            "ancient stone relief carving",
+        ]
+    if "kazi" in text or "toprak" in text:
+        variants += [
+            "archaeological excavation turkey",
+            "neolithic archaeological excavation",
+        ]
+    if scene_type in ("intro", "atmosphere", "theory"):
+        variants += [
+            "ancient anatolia ruins night",
+            "neolithic stone temple ruins",
+            "ancient ruins mysterious atmosphere",
+        ]
+
+    variants += FALLBACK_PHOTO_QUERIES
+    return _unique(variants)
 
 
 def build_video_query_from_scene_note(scene_note: str) -> str:
-    """
-    Normal video aramalari icin JENERIK/atmosferik bir sorgu uretir.
-    Spesifik yer adlari Pexels video'da hemen hiç sonuc vermedigi icin,
-    sahne notundaki atmosfer kelimelerini yakalayip kisa bir sorgu kurar.
-    """
     atmosphere_map = {
-        "sis": "fog mist",
-        "gece": "night",
-        "ates": "fire torch",
-        "mesale": "torch flame",
-        "tas": "stone ruins",
-        "kalinti": "ancient ruins",
-        "karanlik": "dark mysterious",
-        "gizem": "mysterious ancient",
-        "golge": "shadow silhouette",
-        "ay": "moonlight night",
-        "ruzgar": "windy landscape",
-        "toprak": "ancient earth excavation",
-        "kazi": "archaeological excavation",
-        "tapinak": "ancient temple",
-        "mezar": "ancient tomb",
-        "yildiz": "starry sky",
-        "sutun": "stone pillars",
-        "kabartma": "ancient carving",
+        "sis": "fog mist", "gece": "night", "ates": "fire torch",
+        "mesale": "torch flame", "tas": "stone ruins", "kalinti": "ancient ruins",
+        "karanlik": "dark mysterious", "gizem": "mysterious ancient",
+        "golge": "shadow silhouette", "ay": "moonlight night",
+        "ruzgar": "windy landscape", "toprak": "ancient earth excavation",
+        "kazi": "archaeological excavation", "tapinak": "ancient temple",
+        "mezar": "ancient tomb", "yildiz": "starry sky",
+        "sutun": "stone pillars", "kabartma": "ancient carving",
         "animasyon": "cinematic reconstruction",
     }
-
     if not scene_note:
         return "ancient ruins mist"
-
-    note_ascii = _normalized(scene_note)
-    hits = [eng for tr, eng in atmosphere_map.items() if tr in note_ascii]
-
-    if hits:
-        return " ".join(hits[:2])
-    return "ancient ruins mist"
+    note = _normalized(scene_note)
+    hits = [eng for tr, eng in atmosphere_map.items() if tr in note]
+    return " ".join(hits[:2]) if hits else "ancient ruins mist"
 
 
-def build_ai_video_query_from_scene_note(scene_note: str, day_title: str) -> str:
-    """
-    AI/cinematic stok video aramasi icin sorgu uretir.
-    Bu fonksiyon video URETMEZ; Pexels gibi stok kaynaklarda
-    "AI generated / cinematic" anahtar kelimeleriyle arama yapar.
-    """
-    known_query = _known_site_query(f"{day_title or ''} {scene_note or ''}")
-    atmosphere_query = build_video_query_from_scene_note(scene_note)
+def build_video_query_variants(scene_note: str, day_title: str, scene_type: str):
+    base = build_video_query_from_scene_note(scene_note)
+    variants = [base]
 
-    if known_query:
-        # Pexels'te spesifik mekan videosu zor bulundugu icin mekan adini degil,
-        # o mekanin turunu ve atmosferi one cikariyoruz.
-        if "gobekli" in known_query or "karahantepe" in known_query:
-            base = "neolithic stone temple archaeological reconstruction"
-        elif "hattusa" in known_query:
-            base = "ancient hittite city ruins reconstruction"
-        elif "troy" in known_query:
-            base = "ancient city ruins cinematic reconstruction"
-        else:
-            base = "ancient anatolia ruins cinematic reconstruction"
-        return f"ai generated {base} {atmosphere_query}"
+    if scene_type == "intro":
+        variants += [
+            "cinematic ancient ruins night stars",
+            "mysterious stone temple night cinematic",
+            "ancient ruins fog cinematic",
+            "dark archaeological ruins cinematic",
+        ]
+    elif scene_type == "atmosphere":
+        variants += [
+            "mysterious ancient ruins fog",
+            "torch flame ancient ruins",
+            "dark stone ruins cinematic",
+            "ancient temple night atmosphere",
+        ]
+    elif scene_type == "theory":
+        variants += [
+            "cinematic ancient ritual fire",
+            "mysterious ancient symbols",
+            "archaeological mystery cinematic",
+        ]
+    else:
+        variants += [
+            "archaeological excavation",
+            "ancient ruins cinematic",
+            "stone ruins landscape",
+        ]
 
-    return f"ai generated cinematic {atmosphere_query}"
+    variants += FALLBACK_VIDEO_QUERIES
+    return _unique(variants)
+
+
+def build_ai_video_query_variants(scene_note: str, day_title: str, scene_type: str):
+    text = _normalized(f"{day_title} {scene_note}")
+    atmosphere = build_video_query_from_scene_note(scene_note)
+
+    if "gobekli" in text or "karahantepe" in text:
+        base = "neolithic stone temple archaeological reconstruction"
+    elif "hattusa" in text:
+        base = "ancient hittite city ruins reconstruction"
+    elif "troya" in text or "truva" in text:
+        base = "ancient city ruins cinematic reconstruction"
+    else:
+        base = "ancient anatolia ruins cinematic reconstruction"
+
+    variants = [
+        f"ai generated {base} {atmosphere}",
+        f"cinematic {base}",
+        f"ancient mystery {atmosphere}",
+    ]
+
+    if scene_type == "intro":
+        variants.insert(0, "ai generated cinematic ancient ruins night stars")
+    if scene_type == "theory":
+        variants.insert(0, "ai generated ancient ritual mysterious temple")
+
+    variants += FALLBACK_AI_VIDEO_QUERIES
+    return _unique(variants)
 
 
 def estimate_seconds(word_count: int) -> float:
@@ -277,6 +331,16 @@ def estimate_seconds(word_count: int) -> float:
         return config.MIN_SCENE_SECONDS
     seconds = word_count / WORDS_PER_SECOND
     return max(config.MIN_SCENE_SECONDS, min(seconds, config.MAX_SCENE_SECONDS))
+
+
+def target_media_count(word_count: int, scene_type: str) -> int:
+    if scene_type == "intro":
+        return 3
+    if word_count >= 55:
+        return 3
+    if word_count >= 22:
+        return 2
+    return 1
 
 
 def _get_with_retry(url, params=None, headers=None):
@@ -289,239 +353,158 @@ def _get_with_retry(url, params=None, headers=None):
             last_err = f"HTTP {resp.status_code}"
         except requests.RequestException as e:
             last_err = str(e)
-        time.sleep(RETRY_SLEEP)
+        if attempt < RETRY_COUNT:
+            time.sleep(RETRY_SLEEP)
     print(f"[image_fetch] Istek basarisiz ({url}): {last_err}")
     return None
 
 
-# =========================================================
-# WIKIMEDIA COMMONS
-# =========================================================
-def search_wikimedia(query: str):
-    """Wikimedia Commons'ta gorsel arar, ilk uygun sonucun URL'sini doner."""
+def search_wikimedia_candidates(query: str):
     search_params = {
-        "action": "query",
-        "format": "json",
-        "list": "search",
-        "srsearch": f"{query} filetype:bitmap",
-        "srnamespace": 6,  # File namespace
-        "srlimit": 5,
+        "action": "query", "format": "json", "list": "search",
+        "srsearch": f"{query} filetype:bitmap", "srnamespace": 6, "srlimit": 8,
     }
     resp = _get_with_retry(WIKIMEDIA_API, params=search_params, headers=WIKIMEDIA_HEADERS)
     if not resp:
-        return None
+        return []
 
     results = resp.json().get("query", {}).get("search", [])
-    if not results:
-        return None
-
+    urls = []
     for result in results:
         title = result.get("title")
         if not title:
             continue
-
         info_params = {
-            "action": "query",
-            "format": "json",
-            "titles": title,
-            "prop": "imageinfo",
-            "iiprop": "url|size",
-            "iiurlwidth": config.VIDEO_WIDTH,
+            "action": "query", "format": "json", "titles": title,
+            "prop": "imageinfo", "iiprop": "url|size", "iiurlwidth": config.VIDEO_WIDTH,
         }
         info_resp = _get_with_retry(WIKIMEDIA_API, params=info_params, headers=WIKIMEDIA_HEADERS)
         if not info_resp:
             continue
-
         pages = info_resp.json().get("query", {}).get("pages", {})
         for page in pages.values():
             imageinfo = page.get("imageinfo")
             if imageinfo:
                 url = imageinfo[0].get("thumburl") or imageinfo[0].get("url")
                 if url:
-                    return url
+                    urls.append(url)
+    return _unique(urls)
 
-    return None
 
-
-# =========================================================
-# PEXELS
-# =========================================================
-def search_pexels_photo(query: str):
-    """Pexels FOTO API'sinde arar, ilk sonucun buyuk boyutlu URL'sini doner."""
+def search_pexels_photo_candidates(query: str):
     if not config.PEXELS_API_KEY:
-        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels atlaniyor.")
-        return None
-
+        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels foto atlaniyor.")
+        return []
     headers = {"Authorization": config.PEXELS_API_KEY}
-    params = {"query": query, "per_page": 5, "orientation": "landscape"}
+    params = {"query": query, "per_page": 10, "orientation": "landscape"}
     resp = _get_with_retry(PEXELS_PHOTO_API, params=params, headers=headers)
     if not resp:
-        return None
+        return []
+    urls = []
+    for photo in resp.json().get("photos", []):
+        src = photo.get("src", {})
+        url = src.get("large2x") or src.get("large") or src.get("original")
+        if url:
+            urls.append(url)
+    return _unique(urls)
 
-    photos = resp.json().get("photos", [])
-    if not photos:
-        return None
 
-    photo = photos[0]
-    src = photo.get("src", {})
-    return src.get("large2x") or src.get("large") or src.get("original")
-
-
-def search_pexels_video(query: str):
-    """
-    Pexels VIDEO API'sinde arar. 1920x1080'e en yakin, asiri uzun olmayan
-    (ideal: 5-25 sn) bir video dosyasi secip URL'sini doner.
-    """
-    if not config.PEXELS_API_KEY:
-        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels video atlaniyor.")
-        return None
-
-    headers = {"Authorization": config.PEXELS_API_KEY}
-    params = {"query": query, "per_page": 5, "orientation": "landscape"}
-    resp = _get_with_retry(PEXELS_VIDEO_API, params=params, headers=headers)
-    if not resp:
-        return None
-
-    videos = resp.json().get("videos", [])
-    if not videos:
-        return None
-
-    # Ilk videonun dosya varyantlari icinden HD (1920 genislik civari) sec
-    video = videos[0]
+def _best_video_link(video: dict):
     video_files = video.get("video_files", [])
     if not video_files:
         return None
-
-    # Genislige gore 1920'ye en yakin dosyayi tercih et
     def _width_score(vf):
         w = vf.get("width") or 0
         return abs(w - config.VIDEO_WIDTH)
-
     best = sorted(video_files, key=_width_score)[0]
     return best.get("link")
 
 
-def search_pexels_ai_video(query: str):
-    """
-    AI/cinematic stok video arar. Pexels uzerinden yapildigi icin
-    bulunan videonun gercekten AI ile uretilmis oldugunu garanti etmez;
-    ama "ai generated / cinematic / reconstruction" etiketli sonuclari
-    yakalamayi hedefler.
-    """
-    if not config.AI_VIDEO_ENABLED:
-        return None
-    return search_pexels_video(query)
+def search_pexels_video_candidates(query: str):
+    if not config.PEXELS_API_KEY:
+        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels video atlaniyor.")
+        return []
+    headers = {"Authorization": config.PEXELS_API_KEY}
+    params = {"query": query, "per_page": 10, "orientation": "landscape"}
+    resp = _get_with_retry(PEXELS_VIDEO_API, params=params, headers=headers)
+    if not resp:
+        return []
+    urls = []
+    for video in resp.json().get("videos", []):
+        url = _best_video_link(video)
+        if url:
+            urls.append(url)
+    return _unique(urls)
 
 
-# =========================================================
-# INDIRME
-# =========================================================
 def download_media(url: str, dest_path: Path) -> bool:
     resp = _get_with_retry(url)
-    if not resp:
+    if not resp or not resp.content:
         return False
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     dest_path.write_bytes(resp.content)
     return True
 
 
-# Geriye uyumluluk icin eski isim kalsin
-download_image = download_media
+def provider_order_for(scene_type: str, item_index: int):
+    if scene_type in ("intro", "atmosphere", "theory"):
+        if item_index == 0:
+            return ["pexels_ai_video", "pexels_video", "wikimedia", "pexels_photo"]
+        return ["pexels_video", "wikimedia", "pexels_photo", "pexels_ai_video"]
+    if scene_type == "historical_detail":
+        if item_index == 0:
+            return ["wikimedia", "pexels_photo", "pexels_ai_video", "pexels_video"]
+        if item_index == 1:
+            return ["wikimedia", "pexels_photo", "pexels_video", "pexels_ai_video"]
+        return ["pexels_video", "pexels_ai_video", "wikimedia", "pexels_photo"]
+    if item_index % 2 == 0:
+        return ["wikimedia", "pexels_photo", "pexels_video", "pexels_ai_video"]
+    return ["pexels_video", "pexels_ai_video", "wikimedia", "pexels_photo"]
 
 
-# =========================================================
-# ANA MANTIK: bir segment icin HIBRIT medya bul (foto ya da video)
-# =========================================================
-def fetch_media_for_segment(
-    query: str,
-    video_query: str,
-    ai_video_query: str,
-    dest_dir: Path,
-    base_name: str,
-):
-    """
-    Hibrit karar zinciri:
-      1) Wikimedia'da GERCEK foto ara
-      2) Bulunamazsa Pexels FOTO ara
-      3) Bulunamazsa Pexels'te AI/cinematic stok VIDEO ara
-      4) Bulunamazsa normal Pexels VIDEO ara
-      5) Hicbiri olmazsa fallback foto/video sorgulariyla sirayla dene
+def candidates_for_provider(provider: str, photo_queries, video_queries, ai_video_queries):
+    if provider == "wikimedia":
+        for query in photo_queries:
+            for url in search_wikimedia_candidates(query):
+                yield "image", "wikimedia", query, url
+    elif provider == "pexels_photo":
+        for query in photo_queries:
+            for url in search_pexels_photo_candidates(query):
+                yield "image", "pexels_photo", query, url
+    elif provider == "pexels_video":
+        for query in video_queries:
+            for url in search_pexels_video_candidates(query):
+                yield "video", "pexels_video", query, url
+    elif provider == "pexels_ai_video" and config.AI_VIDEO_ENABLED:
+        for query in ai_video_queries:
+            for url in search_pexels_video_candidates(query):
+                yield "video", "pexels_ai_video", query, url
 
-    Doner: (media_type, media_source, used_query, dest_path) ya da
-           (None, None, query, None) basarisizlik durumunda.
-    """
-    # 1) Wikimedia - gercek/tarihi foto
-    url = search_wikimedia(query)
-    if url:
-        dest_path = dest_dir / f"{base_name}.jpg"
-        if download_media(url, dest_path):
-            return "image", "wikimedia", query, dest_path
 
-    # 2) Pexels foto - video oncesi; tarih belgeselinde alakasiz stok videodan daha guvenli
-    url = search_pexels_photo(query)
-    if url:
-        dest_path = dest_dir / f"{base_name}.jpg"
-        if download_media(url, dest_path):
-            return "image", "pexels_photo", query, dest_path
-
-    # 3) AI/cinematic stok video
-    url = search_pexels_ai_video(ai_video_query)
-    if url:
-        dest_path = dest_dir / f"{base_name}.mp4"
-        if download_media(url, dest_path):
-            return "video", "pexels_ai_video", ai_video_query, dest_path
-
-    # 4) Normal Pexels video - atmosferik/genel sahne
-    url = search_pexels_video(video_query)
-    if url:
-        dest_path = dest_dir / f"{base_name}.mp4"
-        if download_media(url, dest_path):
-            return "video", "pexels_video", video_query, dest_path
-
-    # 5) Fallback - once foto sorgulariyla wikimedia+pexels foto
-    for fallback_query in FALLBACK_QUERIES:
-        url = search_wikimedia(fallback_query)
-        if url:
-            dest_path = dest_dir / f"{base_name}.jpg"
+def fetch_one_media_item(scene_index, item_index, scene_type, photo_queries, video_queries, ai_video_queries, dest_dir, used_urls):
+    base_name = f"scene_{scene_index:02d}_{item_index:02d}"
+    for provider in provider_order_for(scene_type, item_index):
+        for media_type, source, used_query, url in candidates_for_provider(provider, photo_queries, video_queries, ai_video_queries):
+            if url in used_urls:
+                continue
+            ext = "mp4" if media_type == "video" else "jpg"
+            dest_path = dest_dir / f"{base_name}.{ext}"
             if download_media(url, dest_path):
-                return "image", "fallback-wikimedia", fallback_query, dest_path
-
-        url = search_pexels_photo(fallback_query)
-        if url:
-            dest_path = dest_dir / f"{base_name}.jpg"
-            if download_media(url, dest_path):
-                return "image", "fallback-pexels_photo", fallback_query, dest_path
-
-    # Sonra AI/cinematic video fallbackleri
-    if config.AI_VIDEO_ENABLED:
-        for fallback_ai_query in FALLBACK_AI_VIDEO_QUERIES:
-            url = search_pexels_ai_video(fallback_ai_query)
-            if url:
-                dest_path = dest_dir / f"{base_name}.mp4"
-                if download_media(url, dest_path):
-                    return "video", "fallback-pexels_ai_video", fallback_ai_query, dest_path
-
-    # En son normal video fallbackleri
-    for fallback_video_query in FALLBACK_VIDEO_QUERIES:
-        url = search_pexels_video(fallback_video_query)
-        if url:
-            dest_path = dest_dir / f"{base_name}.mp4"
-            if download_media(url, dest_path):
-                return "video", "fallback-pexels_video", fallback_video_query, dest_path
-
-    return None, None, query, None
+                used_urls.add(url)
+                return {
+                    "media_path": str(dest_path.relative_to(config.BASE_DIR)),
+                    "media_type": media_type,
+                    "media_source": source,
+                    "media_query": used_query,
+                    "source_url": url,
+                }
+    return None
 
 
-# =========================================================
-# GUN ISLEME
-# =========================================================
 def process_day(day: int, save_json: bool = True) -> dict:
     parsed_path = config.OUTPUT_DIR / f"video_{day:02d}" / "script_parsed.json"
     if not parsed_path.exists():
-        raise FileNotFoundError(
-            f"script_parsed.json bulunamadi: {parsed_path}. "
-            f"Once script_parse.py calistirilmali."
-        )
+        raise FileNotFoundError(f"script_parsed.json bulunamadi: {parsed_path}. Once script_parse.py calistirilmali.")
 
     parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
     day_title = parsed["title"]
@@ -530,73 +513,78 @@ def process_day(day: int, save_json: bool = True) -> dict:
     media_dir = config.OUTPUT_DIR / f"video_{day:02d}" / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
 
+    used_urls = set()
     scenes = []
+
     for idx, seg in enumerate(segments):
         scene_note = seg.get("scene_note")
         narration = seg.get("narration", "")
         word_count = len(narration.split())
+        scene_type = classify_scene(idx, scene_note, narration, day_title)
+        desired_count = target_media_count(word_count, scene_type)
 
-        photo_query = build_query_from_scene_note(scene_note, day_title)
-        video_query = build_video_query_from_scene_note(scene_note)
-        ai_video_query = build_ai_video_query_from_scene_note(scene_note, day_title)
-        base_name = f"scene_{idx:02d}"
+        photo_queries = build_photo_query_variants(scene_note, day_title, scene_type)
+        video_queries = build_video_query_variants(scene_note, day_title, scene_type)
+        ai_video_queries = build_ai_video_query_variants(scene_note, day_title, scene_type)
 
-        media_type, source, used_query, dest_path = fetch_media_for_segment(
-            photo_query, video_query, ai_video_query, media_dir, base_name
-        )
+        media_items = []
+        for item_idx in range(desired_count):
+            item = fetch_one_media_item(
+                idx, item_idx, scene_type,
+                photo_queries[item_idx:] + photo_queries[:item_idx],
+                video_queries[item_idx:] + video_queries[:item_idx],
+                ai_video_queries[item_idx:] + ai_video_queries[:item_idx],
+                media_dir, used_urls,
+            )
+            if item:
+                media_items.append(item)
+                print(f"[image_fetch] Gun {day} sahne {idx}.{item_idx}: [{item['media_type']}] {item['media_source']} -> {item['media_query']}")
 
-        if source is None:
-            print(f"[image_fetch] Gun {day} sahne {idx}: MEDYA BULUNAMADI ({photo_query})")
-            media_rel_path = None
-        else:
-            media_rel_path = str(dest_path.relative_to(config.BASE_DIR))
-            print(f"[image_fetch] Gun {day} sahne {idx}: [{media_type}] {source} -> {used_query}")
+        if not media_items:
+            print(f"[image_fetch] Gun {day} sahne {idx}: MEDYA BULUNAMADI ({photo_queries[0]})")
 
+        first = media_items[0] if media_items else {}
         scenes.append({
             "index": idx,
+            "scene_type": scene_type,
             "scene_note": scene_note,
             "narration": narration,
             "word_count": word_count,
             "estimated_seconds": round(estimate_seconds(word_count), 2),
-            "media_path": media_rel_path,
-            "media_type": media_type or "none",
-            "media_source": source or "none",
-            "media_query": used_query,
-            "photo_query": photo_query,
-            "video_query": video_query,
-            "ai_video_query": ai_video_query,
+            "media_items": media_items,
+            "media_path": first.get("media_path"),
+            "media_type": first.get("media_type", "none"),
+            "media_source": first.get("media_source", "none"),
+            "media_query": first.get("media_query", photo_queries[0] if photo_queries else ""),
+            "photo_queries": photo_queries[:5],
+            "video_queries": video_queries[:5],
+            "ai_video_queries": ai_video_queries[:5],
         })
 
     result = {"day": day, "title": day_title, "scenes": scenes}
 
     if save_json:
         manifest_path = config.OUTPUT_DIR / f"video_{day:02d}" / "images_manifest.json"
-        manifest_path.write_text(
-            json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        manifest_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"[image_fetch] Gun {day} tamamlandi -> {manifest_path}")
 
-    missing = [s for s in scenes if s["media_path"] is None]
+    all_items = [item for scene in scenes for item in scene.get("media_items", [])]
+    image_count = sum(1 for item in all_items if item["media_type"] == "image")
+    video_count = sum(1 for item in all_items if item["media_type"] == "video")
+    ai_video_count = sum(1 for item in all_items if "ai_video" in item["media_source"])
+    missing = [s for s in scenes if not s.get("media_items")]
+
     if missing:
         print(f"[image_fetch] UYARI: {len(missing)} sahne medyasiz kaldi (gun {day}).")
 
-    video_count = sum(1 for s in scenes if s["media_type"] == "video")
-    image_count = sum(1 for s in scenes if s["media_type"] == "image")
-    ai_video_count = sum(1 for s in scenes if "ai_video" in s["media_source"])
-    print(
-        f"[image_fetch] Gun {day}: {image_count} foto, {video_count} video klip "
-        f"({ai_video_count} AI/cinematic arama sonucu) kullanildi."
-    )
-
+    print(f"[image_fetch] Gun {day}: {image_count} foto, {video_count} video klip ({ai_video_count} AI/cinematic arama sonucu), toplam {len(all_items)} medya kullanildi.")
     return result
 
 
 if __name__ == "__main__":
     import sys
-
     if len(sys.argv) > 1:
-        gun = int(sys.argv[1])
-        process_day(gun)
+        process_day(int(sys.argv[1]))
     else:
         print("Kullanim: python image_fetch.py <gun_numarasi>")
         print("Ornek: python image_fetch.py 1")
