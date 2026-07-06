@@ -17,6 +17,10 @@ on:
         required: true
         type: number
 
+# uploaded.json'i repoya geri yazabilmek icin gerekli.
+permissions:
+  contents: write
+
 # Ayni anda birden fazla calismasin - state/uploaded.json uzerinde
 # yaris durumu (race condition) olmasin diye.
 concurrency:
@@ -52,12 +56,14 @@ jobs:
             DAY="${{ github.event.inputs.day }}"
             echo "[workflow] Manuel tetikleme, gun: $DAY"
           else
-            # Bu commit'te degisen dosyalar arasinda content/raw_audio/NN.mp3 ara
-            CHANGED_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" \
+            # Bu commit'te eklenen/degisen dosyalar arasinda content/raw_audio/NN.mp3 ara.
+            # Silinen dosyalar workflow'u tetiklese bile pipeline calistirilmaz.
+            CHANGED_FILE=$(git diff-tree --diff-filter=AM --no-commit-id --name-only -r "$GITHUB_SHA" \
               | grep -E '^content/raw_audio/[0-9]+\.mp3$' | head -n 1)
 
             if [ -z "$CHANGED_FILE" ]; then
-              echo "[workflow] HATA: content/raw_audio/NN.mp3 formatinda degisen dosya bulunamadi."
+              echo "[workflow] HATA: Eklenen/degisen content/raw_audio/NN.mp3 dosyasi bulunamadi."
+              echo "[workflow] Not: Ses dosyasi silme commit'i pipeline calistirmez."
               exit 1
             fi
 
@@ -82,8 +88,13 @@ jobs:
         run: rm -f google_credentials.json
 
       - name: uploaded.json'i repoya geri yaz
-        if: always()
+        if: success()
         run: |
+          if [ ! -f state/uploaded.json ]; then
+            echo "state/uploaded.json yok, commit atlanıyor."
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state/uploaded.json
