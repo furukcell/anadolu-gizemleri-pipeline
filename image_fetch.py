@@ -1,26 +1,24 @@
 """
 image_fetch.py
 --------------
-V7: AV PLAN tabanli VIDEO-ONLY medya toplama modulu.
+V8: video_discovery.py tarafindan bulunan konuya özel aday havuzundan
+sadece lisanslı/indirilebilir gerçek video seçer.
 
-Bu surum artik content/visual_plans degil, content/av_plans okur.
-AV plan icindeki segments[] alanini kullanir:
-- search_queries -> hangi MP4 videolar aranacak
-- on_screen_text -> montajda ekrana gelecek yazilar
-- music_mood / music_intensity / sfx -> montajda ses tasarimi
+Bu dosya artık segment segment genel stok arama yapmaz.
+Önce output/video_NN/video_candidates.json dosyasına bakar.
+Konuya yakın otomatik indirilebilir aday yoksa pipeline durur.
 
 Kurallar:
 - Foto yok.
-- Wikimedia yok.
+- Wikimedia foto yok.
 - Ken Burns yok.
-- Sadece gercek MP4 video indirilir.
-- Video bulunamazsa pipeline durur; kotu/slayt video uretmez.
+- Pexels/Pixabay genel fallback yok.
+- Alakasız stok video yok.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -28,37 +26,24 @@ import time
 import unicodedata
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 import requests
 
 import config
 
-PEXELS_VIDEO_API = "https://api.pexels.com/videos/search"
-PIXABAY_VIDEO_API = "https://pixabay.com/api/videos/"
-
-REQUEST_TIMEOUT = 25
+REQUEST_TIMEOUT = 30
 RETRY_COUNT = 2
 RETRY_SLEEP = 2
 MIN_VIDEO_BYTES = 80_000
 MIN_VIDEO_DURATION = 2.0
-DEFAULT_PER_PAGE = 15
 
 USER_AGENT = (
-    "AnadoluGizemleriPipeline/3.0 "
+    "AnadoluGizemleriImageFetchV8/1.0 "
     "(https://github.com/furukcell/anadolu-gizemleri-pipeline)"
 )
 
-DEFAULT_AVOID_TERMS = [
-    "lycia", "lycian", "pinara", "ephesus", "efes", "roman ruins",
-    "greek ruins", "pamukkale", "hierapolis", "perge", "side", "miletus",
-    "troy", "troya", "truva", "hattusa", "ani", "modern tourists",
-    "modern city", "cars", "logo", "watermark", "beach", "resort",
-]
 
-
-# =========================================================
-# Yardimci fonksiyonlar
-# =========================================================
 def _turkish_to_ascii(text: str) -> str:
     tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
     text = (text or "").translate(tr_map)
@@ -66,14 +51,14 @@ def _turkish_to_ascii(text: str) -> str:
     return text.encode("ascii", "ignore").decode("ascii")
 
 
-def _normalized(text: str) -> str:
+def _norm(text: str) -> str:
     return _turkish_to_ascii(text or "").lower()
 
 
-def _slug(text: str, max_len: int = 60) -> str:
-    norm = _normalized(text)
+def _slug(text: str, max_len: int = 64) -> str:
+    norm = _norm(text)
     norm = re.sub(r"[^a-z0-9]+", "_", norm).strip("_")
-    return norm[:max_len].strip("_") or "scene"
+    return norm[:max_len].strip("_") or "video"
 
 
 def _unique(items: Iterable[str]) -> list[str]:
@@ -101,20 +86,14 @@ def parse_time_to_seconds(value: str | int | float) -> float:
     raise ValueError(f"Gecersiz zaman formati: {value}")
 
 
-def _get_with_retry(url: str, params=None, headers=None, stream: bool = False):
+def _get_with_retry(url: str, headers=None, stream: bool = False):
     last_err = None
     headers = headers or {}
     headers.setdefault("User-Agent", USER_AGENT)
 
     for attempt in range(RETRY_COUNT + 1):
         try:
-            resp = requests.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=REQUEST_TIMEOUT,
-                stream=stream,
-            )
+            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT, stream=stream, allow_redirects=True)
             if resp.status_code == 200:
                 return resp
             last_err = f"HTTP {resp.status_code}"
@@ -124,7 +103,7 @@ def _get_with_retry(url: str, params=None, headers=None, stream: bool = False):
         if attempt < RETRY_COUNT:
             time.sleep(RETRY_SLEEP)
 
-    print(f"[image_fetch] Istek basarisiz: {url} -> {last_err}")
+    print(f"[image_fetch] Indirme istegi basarisiz: {url} -> {last_err}")
     return None
 
 
@@ -137,8 +116,7 @@ def find_av_plan(day: int) -> Path:
     if not candidates:
         raise FileNotFoundError(
             f"AV plan bulunamadi: {plan_dir}/{day:02d}_*_av_plan.json\n"
-            "V7 AV PLAN modu bu dosya olmadan calismaz.\n"
-            "Ornek: content/av_plans/01_gobeklitepe_karahantepe_av_plan.json"
+            "V8 mod bu dosya olmadan calismaz."
         )
     return candidates[0]
 
@@ -146,22 +124,15 @@ def find_av_plan(day: int) -> Path:
 def load_av_plan(day: int) -> dict:
     plan_path = find_av_plan(day)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    segments = plan.get("segments") or plan.get("scenes") or []
+    segments = plan.get("segments") or []
     if not segments:
         raise ValueError(f"AV plan bos veya hatali: {plan_path} (segments[] yok)")
-
-    global_rules = plan.get("global_rules") or {}
-    visual_rules = global_rules.get("visual") or {}
-    global_avoid = list(visual_rules.get("avoid") or []) + DEFAULT_AVOID_TERMS
 
     for i, seg in enumerate(segments):
         seg.setdefault("index", i)
         seg.setdefault("id", f"segment_{i:02d}")
         seg.setdefault("must_be_video", True)
         seg.setdefault("allow_photo", False)
-        seg.setdefault("search_queries", [])
-        seg.setdefault("fallback_queries", [])
-        seg.setdefault("avoid", [])
         seg.setdefault("on_screen_text", [])
         seg.setdefault("music_mood", "ancient_mystery_drone")
         seg.setdefault("music_intensity", 0.45)
@@ -170,37 +141,52 @@ def load_av_plan(day: int) -> dict:
         start = parse_time_to_seconds(seg["start"])
         end = parse_time_to_seconds(seg["end"])
         if end <= start:
-            raise ValueError(
-                f"AV planda sahne suresi hatali: index={i}, {seg['start']}->{seg['end']}"
-            )
+            raise ValueError(f"AV planda sahne suresi hatali: index={i}, {seg['start']}->{seg['end']}")
         seg["_duration"] = round(end - start, 3)
-        seg["_avoid"] = _unique(list(seg.get("avoid") or []) + global_avoid)
 
-        # 0-14 sn -> 1 video, 15-27 sn -> 2 video, 28+ sn -> 3 video
-        if "desired_media_count" not in seg:
-            if seg["_duration"] >= 28:
-                seg["desired_media_count"] = 3
-            elif seg["_duration"] >= 15:
-                seg["desired_media_count"] = 2
-            else:
-                seg["desired_media_count"] = 1
+        # V8'de her segmentte 1 konu videosu yeterli. Aynı dosya ffmpeg ile süreye göre kırpılır/looplanır.
+        # Çok fazla aday varsa desired_media_count verilebilir.
+        seg.setdefault("desired_media_count", 1)
 
     plan["segments"] = segments
     plan["_plan_path"] = str(plan_path)
 
     print(f"[image_fetch] AV plan yuklendi -> {plan_path}")
-    print("[image_fetch] V7 AV PLAN MOD AKTIF: av_plans + video-only + audio metadata")
-    print("[image_fetch] Fotograf/Wikimedia/Ken Burns KAPALI.")
-    print(
-        f"[image_fetch] Plan segment sayisi: {len(segments)}, "
-        f"hedef sure: {sum(s['_duration'] for s in segments):.1f}s"
-    )
+    print("[image_fetch] V8 TOPIC-CANDIDATE MOD AKTIF: genel stok arama kapali.")
+    print("[image_fetch] Fotograf/Wikimedia foto/Ken Burns KAPALI.")
     return plan
 
 
 # =========================================================
-# Video arama / indirme
+# Candidate havuzu
 # =========================================================
+def load_candidates(day: int) -> list[dict]:
+    path = config.OUTPUT_DIR / f"video_{day:02d}" / "video_candidates.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"video_candidates.json bulunamadi: {path}\n"
+            "Once video_discovery.py calismali."
+        )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    candidates = data.get("auto_downloadable_candidates") or []
+    candidates = [
+        c for c in candidates
+        if c.get("download_url") and c.get("usable_for_auto_download") and c.get("accepted")
+    ]
+    candidates = sorted(candidates, key=lambda c: c.get("topic_score", 0), reverse=True)
+
+    if not candidates:
+        raise RuntimeError(
+            f"Konuya yakin otomatik indirilebilir aday yok: {path}\n"
+            "Alakasiz stok video kullanmamak icin pipeline durduruldu."
+        )
+
+    print(f"[image_fetch] Konu aday havuzu yuklendi: {len(candidates)} otomatik indirilebilir video")
+    for c in candidates[:8]:
+        print(f"[image_fetch]   aday score={c.get('topic_score')} source={c.get('source')} title={str(c.get('title'))[:80]}")
+    return candidates
+
+
 def get_video_duration(path: Path) -> float:
     cmd = [
         "ffprobe", "-v", "error",
@@ -224,220 +210,123 @@ def validate_video(path: Path) -> bool:
         return False
 
 
-def _offtopic(text: str, avoid_terms: list[str]) -> bool:
-    norm = _normalized(text)
-    for bad in avoid_terms:
-        if _normalized(bad) in norm:
-            return True
-    return False
+def _extension_from_url(url: str) -> str:
+    path = urlparse(url).path.lower()
+    for ext in (".mp4", ".webm", ".ogv", ".ogg", ".mov"):
+        if path.endswith(ext):
+            return ext
+    return ".mp4"
 
 
-def _best_pexels_video_link(video: dict) -> str | None:
-    files = video.get("video_files", [])
-    if not files:
-        return None
+def download_candidate(candidate: dict, media_dir: Path, cache: dict[str, dict]) -> dict | None:
+    url = candidate["download_url"]
+    if url in cache:
+        return cache[url]
 
-    def score(vf: dict):
-        w = vf.get("width") or 0
-        h = vf.get("height") or 0
-        file_type = vf.get("file_type") or ""
-        is_mp4_penalty = 0 if "mp4" in file_type.lower() else 1000
-        landscape_penalty = 0 if w >= h else 500
-        width_penalty = abs((w or config.VIDEO_WIDTH) - config.VIDEO_WIDTH) / 10
-        too_small_penalty = 300 if w and w < 1280 else 0
-        return is_mp4_penalty + landscape_penalty + width_penalty + too_small_penalty
+    source = candidate.get("source", "source")
+    title_slug = _slug(candidate.get("title") or candidate.get("source_url") or source)
+    ext = _extension_from_url(url)
+    file_name = f"candidate_{len(cache):03d}_{source}_{title_slug}{ext}"
+    out_path = media_dir / file_name
 
-    best = sorted(files, key=score)[0]
-    return best.get("link")
-
-
-def search_pexels_videos(query: str, avoid_terms: list[str]) -> list[dict]:
-    if not config.PEXELS_API_KEY:
-        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels video atlaniyor.")
-        return []
-
-    headers = {"Authorization": config.PEXELS_API_KEY, "User-Agent": USER_AGENT}
-    params = {
-        "query": query,
-        "per_page": DEFAULT_PER_PAGE,
-        "orientation": "landscape",
-    }
-    resp = _get_with_retry(PEXELS_VIDEO_API, params=params, headers=headers)
-    if not resp:
-        return []
-
-    out = []
-    for video in resp.json().get("videos", []):
-        meta_text = " ".join([
-            str(video.get("url", "")),
-            str(video.get("user", {}).get("name", "")),
-            query,
-        ])
-        if _offtopic(meta_text, avoid_terms):
-            continue
-        link = _best_pexels_video_link(video)
-        if link:
-            out.append({
-                "url": link,
-                "source": "pexels_video",
-                "query": query,
-                "meta_url": video.get("url", ""),
-            })
-    return out
-
-
-def _best_pixabay_video_link(video: dict) -> str | None:
-    videos = video.get("videos", {})
-    for key in ("large", "medium", "small", "tiny"):
-        item = videos.get(key) or {}
-        url = item.get("url")
-        if url:
-            return url
-    return None
-
-
-def search_pixabay_videos(query: str, avoid_terms: list[str]) -> list[dict]:
-    api_key = os.environ.get("PIXABAY_API_KEY", "")
-    if not api_key:
-        return []
-
-    params = {
-        "key": api_key,
-        "q": query,
-        "per_page": DEFAULT_PER_PAGE,
-        "video_type": "film",
-        "safesearch": "true",
-    }
-    resp = _get_with_retry(PIXABAY_VIDEO_API, params=params)
-    if not resp:
-        return []
-
-    out = []
-    for video in resp.json().get("hits", []):
-        meta_text = " ".join([
-            str(video.get("tags", "")),
-            str(video.get("pageURL", "")),
-            query,
-        ])
-        if _offtopic(meta_text, avoid_terms):
-            continue
-        link = _best_pixabay_video_link(video)
-        if link:
-            out.append({
-                "url": link,
-                "source": "pixabay_video",
-                "query": query,
-                "meta_url": video.get("pageURL", ""),
-            })
-    return out
-
-
-def download_video(item: dict, out_path: Path) -> bool:
-    url = item["url"]
+    print(f"[image_fetch] indiriliyor: [{source}] score={candidate.get('topic_score')} {candidate.get('title')}")
     resp = _get_with_retry(url, stream=True)
     if not resp:
-        return False
+        print("[image_fetch]   indirilemedi")
+        return None
 
-    tmp_path = out_path.with_suffix(".download")
+    tmp_path = out_path.with_suffix(out_path.suffix + ".download")
     with tmp_path.open("wb") as f:
         for chunk in resp.iter_content(chunk_size=1024 * 1024):
             if chunk:
                 f.write(chunk)
-
     tmp_path.replace(out_path)
-    if validate_video(out_path):
-        return True
 
-    out_path.unlink(missing_ok=True)
-    return False
+    if not validate_video(out_path):
+        print("[image_fetch]   indirilen dosya gecersiz/kisa, atlandi")
+        out_path.unlink(missing_ok=True)
+        return None
+
+    duration = get_video_duration(out_path)
+    rel_path = out_path.relative_to(config.BASE_DIR).as_posix()
+    media_item = {
+        "media_type": "video",
+        "media_path": rel_path,
+        "media_source": candidate.get("source"),
+        "media_query": candidate.get("query", ""),
+        "source_url": candidate.get("source_url"),
+        "download_url": candidate.get("download_url"),
+        "license": candidate.get("license", ""),
+        "creator": candidate.get("creator", ""),
+        "topic_score": candidate.get("topic_score", 0),
+        "duration_seconds": round(duration, 3),
+    }
+    cache[url] = media_item
+    print(f"[image_fetch]   OK -> {out_path.name} ({duration:.1f}s)")
+    return media_item
 
 
-def enhanced_queries(base_queries: list[str]) -> list[str]:
-    queries = []
-    for q in base_queries:
-        q = (q or "").strip()
-        if not q:
+def _segment_text(segment: dict) -> str:
+    return _norm(" ".join([
+        segment.get("id", ""),
+        segment.get("narrative", ""),
+        segment.get("visual_direction", ""),
+        " ".join(segment.get("search_queries") or []),
+    ]))
+
+
+def _candidate_text(candidate: dict) -> str:
+    return _norm(" ".join([
+        candidate.get("title", ""),
+        candidate.get("description", ""),
+        candidate.get("source_url", ""),
+        candidate.get("license", ""),
+    ]))
+
+
+def score_for_segment(candidate: dict, segment: dict, used_count: int) -> float:
+    score = float(candidate.get("topic_score", 0))
+    st = _segment_text(segment)
+    ct = _candidate_text(candidate)
+
+    # Karahantepe bolumunde Karahantepe adayi varsa one al.
+    if "karahantepe" in st and "karahantepe" in ct:
+        score += 8
+    if ("gobekli" in st or "gobeklitepe" in st) and ("gobekli" in ct or "gobeklitepe" in ct):
+        score += 8
+
+    # Rekonstruksiyon/animation adaylari genelde belgesel hissine daha uygun.
+    for term in ("reconstruction", "3d", "animation", "animasyon", "cgi"):
+        if term in ct:
+            score += 2
+
+    # Ayni videoyu cok tekrarlamamak icin ceza; ama baska konu videosu yoksa yine kullanilir.
+    score -= used_count * 1.5
+    return score
+
+
+def choose_candidates_for_segment(segment: dict, candidates: list[dict], used_counts: dict[str, int]) -> list[dict]:
+    target_count = int(segment.get("desired_media_count", 1))
+    ranked = sorted(
+        candidates,
+        key=lambda c: score_for_segment(c, segment, used_counts.get(c.get("download_url", ""), 0)),
+        reverse=True,
+    )
+
+    chosen = []
+    seen = set()
+    for c in ranked:
+        url = c.get("download_url")
+        if not url or url in seen:
             continue
-        queries.append(q)
-        # Pexels/Pixabay bazen cok spesifik sorguda bos donuyor; bu eklemeler
-        # yine planin ruhunda kalip daha fazla gercek MP4 buldurur.
-        if "cinematic" not in q.lower():
-            queries.append(f"{q} cinematic documentary")
-        if "stock footage" not in q.lower():
-            queries.append(f"{q} stock footage")
-    return _unique(queries)
-
-
-def collect_segment_videos(segment: dict, media_dir: Path, used_urls: set[str]) -> list[dict]:
-    idx = int(segment["index"])
-    segment_id = segment.get("id") or f"segment_{idx:02d}"
-    target_count = int(segment.get("desired_media_count", 2))
-    avoid_terms = segment.get("_avoid", DEFAULT_AVOID_TERMS)
-    queries = enhanced_queries(list(segment.get("search_queries") or []) + list(segment.get("fallback_queries") or []))
-
-    if not queries:
-        raise RuntimeError(f"Segment {idx} icin search_queries bos: {segment_id}")
-
-    downloaded = []
-    candidate_no = 0
-
-    print(f"[image_fetch] Segment {idx:02d}: hedef {target_count} video -> {segment_id}")
-
-    for query in queries:
-        if len(downloaded) >= target_count:
+        chosen.append(c)
+        seen.add(url)
+        if len(chosen) >= target_count:
             break
 
-        candidates = []
-        # Pexels once, Pixabay varsa yedek.
-        candidates.extend(search_pexels_videos(query, avoid_terms))
-        candidates.extend(search_pixabay_videos(query, avoid_terms))
-
-        if not candidates:
-            print(f"[image_fetch]   Bos sonuc -> {query}")
-            continue
-
-        for item in candidates:
-            if len(downloaded) >= target_count:
-                break
-            if item["url"] in used_urls:
-                continue
-            used_urls.add(item["url"])
-
-            file_name = f"segment_{idx:02d}_{candidate_no:02d}_{_slug(segment_id)}.mp4"
-            out_path = media_dir / file_name
-            candidate_no += 1
-
-            print(f"[image_fetch]   indiriliyor: [{item['source']}] {query}")
-            if not download_video(item, out_path):
-                print("[image_fetch]   indirilen dosya gecersiz/kisa, atlandi")
-                continue
-
-            rel_path = out_path.relative_to(config.BASE_DIR).as_posix()
-            duration = get_video_duration(out_path)
-            downloaded.append({
-                "media_type": "video",
-                "media_path": rel_path,
-                "media_source": item["source"],
-                "media_query": query,
-                "source_url": item.get("meta_url") or item.get("url"),
-                "duration_seconds": round(duration, 3),
-            })
-            print(f"[image_fetch]   OK -> {out_path.name} ({duration:.1f}s)")
-
-    if not downloaded:
-        raise RuntimeError(
-            f"Segment {idx} icin hic gercek MP4 video bulunamadi: {segment_id}\n"
-            f"Sorgular: {queries[:6]}\n"
-            "Kotu foto/slayt uretmemek icin pipeline durduruldu."
-        )
-
-    if len(downloaded) < target_count:
-        print(
-            f"[image_fetch] UYARI: Segment {idx} hedef {target_count} video idi, "
-            f"{len(downloaded)} bulundu. Devam ediliyor."
-        )
-
-    return downloaded
+    if not chosen:
+        raise RuntimeError(f"Segment icin secilebilir konu videosu yok: {segment.get('id')}")
+    return chosen
 
 
 # =========================================================
@@ -446,6 +335,7 @@ def collect_segment_videos(segment: dict, media_dir: Path, used_urls: set[str]) 
 def process_day(day: int):
     plan = load_av_plan(day)
     segments = plan["segments"]
+    candidates = load_candidates(day)
 
     video_dir = config.OUTPUT_DIR / f"video_{day:02d}"
     media_dir = video_dir / "media"
@@ -455,12 +345,32 @@ def process_day(day: int):
     media_dir.mkdir(parents=True, exist_ok=True)
 
     scenes = []
-    used_urls: set[str] = set()
+    download_cache: dict[str, dict] = {}
+    used_counts: dict[str, int] = {}
 
     for seg in segments:
-        items = collect_segment_videos(seg, media_dir, used_urls)
+        idx = int(seg["index"])
+        chosen = choose_candidates_for_segment(seg, candidates, used_counts)
+        items = []
+
+        print(f"[image_fetch] Segment {idx:02d}: {seg.get('id')} -> {len(chosen)} konu adayi secildi")
+
+        for cand in chosen:
+            media_item = download_candidate(cand, media_dir, download_cache)
+            if not media_item:
+                continue
+            items.append(media_item)
+            url = cand.get("download_url", "")
+            used_counts[url] = used_counts.get(url, 0) + 1
+
+        if not items:
+            raise RuntimeError(
+                f"Segment {idx} icin secilen adaylar indirilemedi: {seg.get('id')}\n"
+                "Alakasiz stok fallback yok; pipeline durduruldu."
+            )
+
         scenes.append({
-            "index": int(seg["index"]),
+            "index": idx,
             "id": seg.get("id"),
             "start": seg.get("start"),
             "end": seg.get("end"),
@@ -477,12 +387,15 @@ def process_day(day: int):
 
     manifest = {
         "day": day,
-        "mode": "av_plan_video_only_v7",
+        "mode": "topic_candidate_pool_v8",
         "av_plan_path": plan.get("_plan_path"),
         "title": plan.get("title", ""),
         "duration_target": plan.get("duration_target", ""),
         "global_rules": plan.get("global_rules", {}),
-        "music_pool_suggestions": plan.get("music_pool_suggestions", {}),
+        "candidate_pool_summary": {
+            "candidate_count": len(candidates),
+            "downloaded_unique_video_count": len(download_cache),
+        },
         "scenes": scenes,
     }
 
@@ -494,8 +407,8 @@ def process_day(day: int):
 
     print(f"[image_fetch] Gun {day} tamamlandi -> {manifest_path}")
     print(
-        f"[image_fetch] Gun {day}: 0 foto, {total_videos} GERCEK MP4 video klip, "
-        f"plan sure {total_duration:.1f}s."
+        f"[image_fetch] Gun {day}: 0 foto, {total_videos} segment video atamasi, "
+        f"{len(download_cache)} benzersiz konu videosu, plan sure {total_duration:.1f}s."
     )
 
 

@@ -1,13 +1,13 @@
 """
 pipeline.py
 ------------
-Tum adimlari (script_parse -> kullanici sesi -> image_fetch -> youtube_montaj ->
-youtube_upload) tek komutla sirayla calistiran orkestrator.
+V8 pipeline:
+script_parse -> kullanici sesi -> video_discovery -> image_fetch -> youtube_montaj -> youtube_upload
 
-V6:
 - TTS fallback kapali.
 - Sadece kullanicinin ham ses kaydi kabul edilir.
 - content/raw_audio/01.mp3 veya content/raw_audio/1.mp3 desteklenir.
+- Video tarafinda once konuya ozel lisansli/indirilebilir aday havuzu kurulur.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from pathlib import Path
 
 import config
 import script_parse
+import video_discovery
 import image_fetch
 import youtube_montaj
 
@@ -38,7 +39,9 @@ def find_raw_audio(day: int) -> Path:
         if path.exists() and path.stat().st_size > 1024:
             return path
 
-    existing = [p.name for p in (config.CONTENT_DIR / "raw_audio").glob("*.mp3")]
+    raw_dir = config.CONTENT_DIR / "raw_audio"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    existing = [p.name for p in raw_dir.glob("*.mp3")]
     raise FileNotFoundError(
         f"KULLANICI SESI BULUNAMADI.\n"
         f"Beklenen dosya: content/raw_audio/{day:02d}.mp3 "
@@ -72,7 +75,7 @@ def run_pipeline(day: int, do_upload: bool = True):
     print(f"{'='*60}\n")
 
     try:
-        print("[pipeline] ADIM 1/5: script_parse.py")
+        print("[pipeline] ADIM 1/6: script_parse.py")
         parsed = script_parse.parse_day(day)
         steps_completed.append("script_parse")
         print(
@@ -80,23 +83,28 @@ def run_pipeline(day: int, do_upload: bool = True):
             f"{parsed['segment_count']} sahne, {parsed['word_count']} kelime\n"
         )
 
-        print("[pipeline] ADIM 2/5: kullanici ses kaydi")
+        print("[pipeline] ADIM 2/6: kullanici ses kaydi")
         voiceover_path = run_voice_step(day)
         steps_completed.append("voice")
         print(f"[pipeline] OK -> {voiceover_path}\n")
 
-        print("[pipeline] ADIM 3/5: planli video toplama (image_fetch.py)")
+        print("[pipeline] ADIM 3/6: konu videosu aday havuzu (video_discovery.py)")
+        candidates_path = video_discovery.process_day(day)
+        steps_completed.append("video_discovery")
+        print(f"[pipeline] OK -> {candidates_path}\n")
+
+        print("[pipeline] ADIM 4/6: aday havuzundan planli video secimi (image_fetch.py)")
         image_fetch.process_day(day)
         steps_completed.append("image_fetch")
-        print("[pipeline] OK -> video medya toplama tamamlandi\n")
+        print("[pipeline] OK -> konu video medya secimi tamamlandi\n")
 
-        print("[pipeline] ADIM 4/5: youtube_montaj.py")
+        print("[pipeline] ADIM 5/6: youtube_montaj.py")
         video_path = youtube_montaj.montage_day(day)
         steps_completed.append("youtube_montaj")
         print(f"[pipeline] OK -> {video_path}\n")
 
         if do_upload:
-            print("[pipeline] ADIM 5/5: youtube_upload.py")
+            print("[pipeline] ADIM 6/6: youtube_upload.py")
             if youtube_upload is None:
                 raise RuntimeError(
                     "youtube_upload.py import edilemedi. requirements.txt'i kontrol et."
@@ -106,7 +114,7 @@ def run_pipeline(day: int, do_upload: bool = True):
             print(f"[pipeline] OK -> https://www.youtube.com/watch?v={video_id}\n")
         else:
             print(
-                f"[pipeline] ADIM 5/5: ATLANDI (--no-upload). "
+                f"[pipeline] ADIM 6/6: ATLANDI (--no-upload). "
                 f"Video hazir: {video_path}\n"
             )
 
