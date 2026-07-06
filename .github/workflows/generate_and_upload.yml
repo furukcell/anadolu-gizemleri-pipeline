@@ -78,6 +78,8 @@ jobs:
       - name: Pipeline'i calistir
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
           FORCE_REUPLOAD: ${{ github.event.inputs.force_upload || 'false' }}
