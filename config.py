@@ -50,12 +50,28 @@ GOOGLE_TTS_SPEAKING_RATE = 0.97   # belgesel/gizem tonu icin hafif yavas
 GOOGLE_TTS_PITCH = -1.5           # hafif kalin/ciddi ton
 
 # =========================================================
-# GORSELLER
+# GORSELLER / MEDYA
 # =========================================================
-# "mixed" -> once Wikimedia Commons'ta gercek yer gorseli ara, bulamazsa Pexels'e dus.
-# "pexels_only" / "wikimedia_only" test amacli kullanilabilir.
+# "mixed" -> once Wikimedia Commons'ta gercek yer gorseli ara,
+# sonra Pexels foto, sonra AI/cinematic stok video, en son normal Pexels video.
+# "pexels_only" / "wikimedia_only" test amacli ileride kullanilabilir.
 IMAGE_PROVIDER = "mixed"
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+
+# Wikimedia GitHub Actions'tan gelen bos/standart bot isteklerine 403 verebiliyor.
+# Bu User-Agent, Commons API isteklerinin kabul edilmesi icin kullanilir.
+WIKIMEDIA_USER_AGENT = os.environ.get(
+    "WIKIMEDIA_USER_AGENT",
+    "AnadoluGizemleriPipeline/1.0 "
+    "(https://github.com/furukcell/anadolu-gizemleri-pipeline; "
+    "contact: destek.fkdigital@gmail.com)"
+)
+
+# AI video modu sifirdan video uretmez. Pexels gibi stok kaynaklarda
+# "AI generated / cinematic / reconstruction" tarzinda video aramasi yapar.
+AI_VIDEO_ENABLED = os.environ.get("AI_VIDEO_ENABLED", "true").lower() in (
+    "1", "true", "yes", "on"
+)
 
 VISUAL_MODE = "photo"   # 7-8 dk'lik belgeselde agirlikli statik foto + Ken Burns efekti
 KEN_BURNS_ENABLED = True
