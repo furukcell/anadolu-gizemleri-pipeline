@@ -1,13 +1,17 @@
 """
 voice_postprocess.py
 ---------------------
-Kullanicinin kendi sesiyle kaydettigi HAM anlatim dosyasini
-(content/raw_audio/NN.mp3 veya content/raw_audio/N.mp3) isler ve
-output/video_NN/voiceover.mp3 olarak kaydeder.
+Kullanicinin kendi sesiyle kaydettigi HAM anlatim dosyasini isler.
 
-Bu dosya kesinlikle TTS uretmez. Sadece verilen ham kullanici sesini temizler.
+V6:
+- Bos/bozuk/kisa dosyayi hata sayar.
+- Eski voiceover.mp3'u temizleyip yeniden uretir.
+- voice_source.json yazar; boylece videoda hangi sesin kullanildigi takip edilir.
 """
 
+from __future__ import annotations
+
+import json
 import subprocess
 from pathlib import Path
 
@@ -25,8 +29,8 @@ AUDIO_FILTER_CHAIN = (
 )
 
 OUTPUT_SAMPLE_RATE = 44100
-MIN_RAW_AUDIO_BYTES = 100 * 1024      # bos/yanlis dosya yakalama
-MIN_RAW_AUDIO_SECONDS = 30.0          # uzun video icin cok kisa kaydi hata say
+MIN_VALID_DURATION = 30.0
+MIN_VALID_BYTES = 100_000
 
 
 def run_ffmpeg(cmd: list, description: str):
@@ -40,12 +44,10 @@ def run_ffmpeg(cmd: list, description: str):
 def validate_raw_audio(raw_path: Path) -> float:
     if not raw_path.exists():
         raise FileNotFoundError(f"Ham ses dosyasi bulunamadi: {raw_path}")
-
-    file_size = raw_path.stat().st_size
-    if file_size < MIN_RAW_AUDIO_BYTES:
+    if raw_path.stat().st_size < MIN_VALID_BYTES:
         raise RuntimeError(
             f"Ham ses dosyasi cok kucuk/bozuk gorunuyor: {raw_path} "
-            f"({file_size} byte). Gercek mp3 dosyasini Upload files ile yukle."
+            f"({raw_path.stat().st_size} byte)"
         )
 
     cmd = [
@@ -58,18 +60,13 @@ def validate_raw_audio(raw_path: Path) -> float:
     if result.returncode != 0:
         raise RuntimeError(f"Ham ses dosyasi okunamadi (bozuk olabilir): {raw_path}")
 
-    try:
-        duration = float(result.stdout.strip())
-    except ValueError as e:
-        raise RuntimeError(f"Ham ses suresi okunamadi: {raw_path}") from e
-
-    if duration < MIN_RAW_AUDIO_SECONDS:
+    duration = float(result.stdout.strip())
+    if duration < MIN_VALID_DURATION:
         raise RuntimeError(
-            f"Ham ses dosyasi cok kisa ({duration:.1f}s): {raw_path}. "
-            "Yanlis dosya yuklenmis olabilir."
+            f"Ham ses dosyasi cok kisa ({duration:.1f}s). Yanlis dosya yuklenmis olabilir: {raw_path}"
         )
 
-    print(f"[voice_postprocess] Ham ses dogrulandi: {raw_path.name}, {duration:.1f}s, {file_size} byte")
+    print(f"[voice_postprocess] Ham ses dogrulandi: {raw_path.name} ({duration:.1f}s)")
     return duration
 
 
@@ -79,10 +76,12 @@ def process_voice(raw_audio_path: str, day: int) -> Path:
 
     out_dir = config.OUTPUT_DIR / f"video_{day:02d}"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "voiceover.mp3"
 
-    # Eski TTS/deneme dosyasi kalmasin.
+    out_path = out_dir / "voiceover.mp3"
+    source_path = out_dir / "voice_source.json"
+
     out_path.unlink(missing_ok=True)
+    source_path.unlink(missing_ok=True)
 
     cmd = [
         "ffmpeg", "-y",
@@ -93,10 +92,22 @@ def process_voice(raw_audio_path: str, day: int) -> Path:
     ]
     run_ffmpeg(cmd, f"Gun {day}: KULLANICI SESI isleniyor ({duration:.1f}s) -> {out_path.name}")
 
-    if not out_path.exists() or out_path.stat().st_size < MIN_RAW_AUDIO_BYTES:
-        raise RuntimeError(f"Islenen voiceover olusmadi veya cok kucuk: {out_path}")
+    if not out_path.exists() or out_path.stat().st_size < 100_000:
+        raise RuntimeError(f"voiceover.mp3 olusmadi veya cok kucuk: {out_path}")
+
+    source_info = {
+        "day": day,
+        "mode": "user_raw_audio_only",
+        "tts_fallback": False,
+        "source_file": str(raw_path),
+        "source_name": raw_path.name,
+        "source_duration_seconds": round(duration, 3),
+        "output_file": str(out_path),
+    }
+    source_path.write_text(json.dumps(source_info, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[voice_postprocess] Gun {day} tamamlandi -> {out_path}")
+    print(f"[voice_postprocess] Ses kaynagi kaydedildi -> {source_path}")
     return out_path
 
 
@@ -104,9 +115,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 2:
-        raw_file = sys.argv[1]
-        gun = int(sys.argv[2])
-        process_voice(raw_file, gun)
+        process_voice(sys.argv[1], int(sys.argv[2]))
     else:
         print("Kullanim: python voice_postprocess.py <ham_ses_dosyasi> <gun_numarasi>")
         print("Ornek: python voice_postprocess.py content/raw_audio/01.mp3 1")

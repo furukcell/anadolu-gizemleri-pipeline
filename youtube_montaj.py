@@ -1,12 +1,16 @@
 """
 youtube_montaj.py
 ------------------
-images_manifest.json ve voiceover.mp3'u kullanarak nihai belgesel videosunu uretir.
+images_manifest.json icindeki planli VIDEO-ONLY veya eski media_items yapisini
+okuyup nihai YouTube videosunu uretir.
 
-Yeni surum media_items listesini destekler. Boylece bir sahne tek fotografla
-gecmek zorunda kalmaz; sahne suresi 2-3 medya parcasina bolunerek daha
-dinamik, belgesel gibi akan bir kurgu uretilir.
+V6 notu:
+- media_items varsa her sahneyi kendi icinde 1+ klibe boler.
+- image gelirse destekler ama VIDEO-ONLY planlarda image zaten uretilmez.
+- Tum ara klipler ayni codec/fps/size ile uretilir; concat daha stabil olur.
 """
+
+from __future__ import annotations
 
 import json
 import shutil
@@ -31,7 +35,7 @@ def run_ffmpeg(cmd: list, description: str):
     print(f"[youtube_montaj] {description}")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(result.stderr[-3000:])
+        print(result.stderr[-4000:])
         raise RuntimeError(f"ffmpeg basarisiz oldu: {description}")
 
 
@@ -56,9 +60,11 @@ def build_image_clip(image_path: Path, duration: float, out_path: Path):
         "-t", str(duration),
         "-r", str(fps),
         "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
         str(out_path),
     ]
-    run_ffmpeg(cmd, f"Ken Burns klip uretiliyor: {image_path.name} ({duration:.1f}s)")
+    run_ffmpeg(cmd, f"UYARI: image klip uretiliyor: {image_path.name} ({duration:.1f}s)")
 
 
 def build_video_clip(video_path: Path, duration: float, out_path: Path):
@@ -74,29 +80,21 @@ def build_video_clip(video_path: Path, duration: float, out_path: Path):
         f"fps={fps},format=yuv420p"
     )
 
+    cmd = ["ffmpeg", "-y"]
     if src_duration < duration:
-        loop_count = int(duration // max(src_duration, 0.1)) + 1
-        cmd = [
-            "ffmpeg", "-y",
-            "-stream_loop", str(loop_count),
-            "-i", str(video_path),
-            "-vf", vf,
-            "-t", str(duration),
-            "-r", str(fps),
-            "-an",
-            str(out_path),
-        ]
-    else:
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(video_path),
-            "-vf", vf,
-            "-t", str(duration),
-            "-r", str(fps),
-            "-an",
-            str(out_path),
-        ]
+        loop_count = max(int(duration // max(src_duration, 0.1)) + 1, 1)
+        cmd += ["-stream_loop", str(loop_count)]
 
+    cmd += [
+        "-i", str(video_path),
+        "-vf", vf,
+        "-t", str(duration),
+        "-r", str(fps),
+        "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        str(out_path),
+    ]
     run_ffmpeg(cmd, f"Video klip hazirlaniyor: {video_path.name} ({duration:.1f}s)")
 
 
@@ -108,60 +106,27 @@ def build_fallback_clip(duration: float, out_path: Path):
         "-i", f"color=c=black:s={config.VIDEO_WIDTH}x{config.VIDEO_HEIGHT}:r={fps}",
         "-t", str(duration),
         "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-pix_fmt", "yuv420p",
         str(out_path),
     ]
-    run_ffmpeg(cmd, f"UYARI: fallback siyah ekran klibi uretiliyor ({duration:.1f}s)")
+    run_ffmpeg(cmd, f"UYARI: fallback siyah ekran ({duration:.1f}s)")
 
 
-def media_items_for_scene(scene: dict):
+def _scene_media_items(scene: dict) -> list[dict]:
     items = scene.get("media_items") or []
-    items = [i for i in items if i.get("media_path")]
     if items:
         return items
 
-    # Eski manifest ile geriye uyumluluk
-    media_path = scene.get("media_path")
-    media_type = scene.get("media_type")
-    if media_path:
-        return [{"media_path": media_path, "media_type": media_type or "image", "media_source": scene.get("media_source", "legacy")}]
+    # Eski manifest uyumlulugu
+    if scene.get("media_path"):
+        return [{
+            "media_path": scene.get("media_path"),
+            "media_type": scene.get("media_type"),
+            "media_source": scene.get("media_source"),
+            "media_query": scene.get("media_query"),
+        }]
     return []
-
-
-def build_clip_for_item(item: dict, duration: float, out_path: Path):
-    media_path = item.get("media_path")
-    media_type = item.get("media_type")
-    if not media_path:
-        build_fallback_clip(duration, out_path)
-        return
-
-    full_media_path = config.BASE_DIR / media_path
-    if not full_media_path.exists():
-        print(f"[youtube_montaj] UYARI: medya dosyasi yok -> {full_media_path}")
-        build_fallback_clip(duration, out_path)
-        return
-
-    try:
-        if media_type == "image":
-            build_image_clip(full_media_path, duration, out_path)
-        elif media_type == "video":
-            build_video_clip(full_media_path, duration, out_path)
-        else:
-            build_fallback_clip(duration, out_path)
-    except Exception as e:
-        # Tek bir bozuk stok video/foto tum pipeline'i patlatmasin.
-        print(f"[youtube_montaj] UYARI: medya klibi bozuk olabilir, fallback kullaniliyor: {e}")
-        build_fallback_clip(duration, out_path)
-
-
-def split_scene_duration(total_duration: float, item_count: int):
-    if item_count <= 1:
-        return [total_duration]
-    base = total_duration / item_count
-    durations = [round(base, 3) for _ in range(item_count)]
-    # Yuvarlama farkini son klibe ekle
-    diff = round(total_duration - sum(durations), 3)
-    durations[-1] = max(durations[-1] + diff, 1.0 / config.VIDEO_FPS)
-    return durations
 
 
 def montage_day(day: int):
@@ -180,11 +145,15 @@ def montage_day(day: int):
     real_duration = get_media_duration(voiceover_path)
     print(f"[youtube_montaj] Gercek seslendirme suresi: {real_duration:.2f}s")
 
-    estimated_total = sum(s["estimated_seconds"] for s in scenes)
+    estimated_total = sum(float(s.get("estimated_seconds", 0)) for s in scenes)
     if estimated_total <= 0:
-        raise ValueError("Sahnelerin tahmini toplam suresi 0 - manifest hatali olabilir.")
+        raise ValueError("Sahnelerin tahmini toplam suresi 0 - manifest hatali.")
     scale_factor = real_duration / estimated_total
-    print(f"[youtube_montaj] Olcek faktoru: {scale_factor:.4f} (tahmini toplam {estimated_total:.1f}s -> gercek {real_duration:.1f}s)")
+
+    print(
+        f"[youtube_montaj] Olcek faktoru: {scale_factor:.4f} "
+        f"(plan/tahmin {estimated_total:.1f}s -> ses {real_duration:.1f}s)"
+    )
 
     clips_dir = video_dir / "clips"
     if clips_dir.exists():
@@ -192,29 +161,47 @@ def montage_day(day: int):
     clips_dir.mkdir(parents=True)
 
     clip_paths = []
-    clip_counter = 0
+    global_clip_index = 0
 
     for scene in scenes:
-        idx = scene["index"]
-        final_duration = round(scene["estimated_seconds"] * scale_factor, 3)
-        final_duration = max(final_duration, 1.0 / config.VIDEO_FPS)
-        items = media_items_for_scene(scene)
+        idx = int(scene["index"])
+        scene_duration = round(float(scene["estimated_seconds"]) * scale_factor, 3)
+        scene_duration = max(scene_duration, 1.0 / config.VIDEO_FPS)
+        items = _scene_media_items(scene)
+
+        print(f"[youtube_montaj] Sahne {idx}: {len(items)} medya parcasi, sure {scene_duration:.1f}s")
 
         if not items:
-            clip_out = clips_dir / f"clip_{clip_counter:04d}.mp4"
-            build_fallback_clip(final_duration, clip_out)
+            clip_out = clips_dir / f"clip_{global_clip_index:04d}_scene_{idx:03d}_fallback.mp4"
+            build_fallback_clip(scene_duration, clip_out)
             clip_paths.append(clip_out)
-            clip_counter += 1
+            global_clip_index += 1
             continue
 
-        durations = split_scene_duration(final_duration, len(items))
-        print(f"[youtube_montaj] Sahne {idx}: {len(items)} medya parcasi, toplam {final_duration:.1f}s")
+        item_duration = max(scene_duration / len(items), 1.0 / config.VIDEO_FPS)
 
-        for item_idx, (item, item_duration) in enumerate(zip(items, durations)):
-            clip_out = clips_dir / f"clip_{clip_counter:04d}_s{idx:02d}_{item_idx:02d}.mp4"
-            build_clip_for_item(item, item_duration, clip_out)
+        for item_no, item in enumerate(items):
+            media_path = item.get("media_path")
+            media_type = item.get("media_type")
+            clip_out = clips_dir / f"clip_{global_clip_index:04d}_scene_{idx:03d}_{item_no:02d}.mp4"
+
+            try:
+                if not media_path:
+                    build_fallback_clip(item_duration, clip_out)
+                else:
+                    full_media_path = config.BASE_DIR / media_path
+                    if media_type == "image":
+                        build_image_clip(full_media_path, item_duration, clip_out)
+                    elif media_type == "video":
+                        build_video_clip(full_media_path, item_duration, clip_out)
+                    else:
+                        build_fallback_clip(item_duration, clip_out)
+            except Exception as e:
+                print(f"[youtube_montaj] UYARI: klip patladi, fallback kullaniliyor: {e}")
+                build_fallback_clip(item_duration, clip_out)
+
             clip_paths.append(clip_out)
-            clip_counter += 1
+            global_clip_index += 1
 
     concat_list_path = clips_dir / "concat_list.txt"
     with concat_list_path.open("w", encoding="utf-8") as f:
@@ -229,7 +216,7 @@ def montage_day(day: int):
         "-c", "copy",
         str(silent_video_path),
     ]
-    run_ffmpeg(cmd_concat, "Tum sahne klipleri birlestiriliyor")
+    run_ffmpeg(cmd_concat, "Tum klipler birlestiriliyor")
 
     final_video_path = video_dir / f"video_{day:02d}.mp4"
     bg_music_path = config.BACKGROUND_MUSIC_PATH
@@ -272,6 +259,7 @@ def montage_day(day: int):
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1:
         montage_day(int(sys.argv[1]))
     else:

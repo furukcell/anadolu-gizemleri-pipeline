@@ -1,125 +1,53 @@
 """
 image_fetch.py
----------------
-VIDEO-ONLY medya toplama modulu.
+--------------
+V6: Plan tabanli VIDEO-ONLY medya toplama modulu.
 
-Bu dosya ismi eski pipeline ile uyum icin "image_fetch.py" olarak kalir ama
-artik fotograf/gorsel toplamaz. Amac:
-- Ken Burns / fotograf zoom hissini tamamen bitirmek
-- Wikimedia ve Pexels photo kullanmamak
-- Sadece gercek MP4 video klipleri indirmek
-- Once AI/cinematic/reconstruction stock video aramak
-- Pexels ve opsiyonel Pixabay video API kullanmak
+Bu surum rasgele foto/stock aramaz. Once content/visual_plans/NN_..._visual_plan.json
+dosyasini okur ve her sahne icin sadece GERCEK mp4 video klip indirir.
 
-Cikti:
-  output/video_NN/media/scene_XX_YY.mp4
-  output/video_NN/images_manifest.json
-
-Opsiyonel ek secret:
-  PIXABAY_API_KEY
+Kurallar:
+- Foto yok.
+- Wikimedia yok.
+- Ken Burns'e gidecek image item yok.
+- Sadece Pexels/Pixabay video API kaynaklari kullanilir.
+- Her sahne icin plan dosyasindaki search_queries kullanilir.
+- Video bulunamazsa pipeline durur; kotu/slayt video uretmez.
 """
+
+from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
+import subprocess
 import time
 import unicodedata
 from pathlib import Path
+from typing import Iterable
 
 import requests
 
 import config
-
-WORDS_PER_SECOND = 2.4 * config.GOOGLE_TTS_SPEAKING_RATE
 
 PEXELS_VIDEO_API = "https://api.pexels.com/videos/search"
 PIXABAY_VIDEO_API = "https://pixabay.com/api/videos/"
 
 REQUEST_TIMEOUT = 20
 RETRY_COUNT = 2
-RETRY_SLEEP = 1.5
+RETRY_SLEEP = 2
+MIN_VIDEO_BYTES = 80_000
+MIN_VIDEO_DURATION = 2.0
+DEFAULT_PER_PAGE = 12
 
 VIDEO_ONLY_MODE = True
 ALLOW_PHOTOS = False
 
-# Sahne basina video parca hedefleri.
-INTRO_VIDEO_COUNT = 4
-LONG_SCENE_VIDEO_COUNT = 4
-MEDIUM_SCENE_VIDEO_COUNT = 3
-SHORT_SCENE_VIDEO_COUNT = 2
-
-# Çok az video bulunursa fail et. Yoksa yine dandik/eksik video cikar.
-MIN_TOTAL_VIDEOS = int(os.environ.get("MIN_TOTAL_VIDEOS", "18"))
-MAX_MISSING_SCENES = int(os.environ.get("MAX_MISSING_SCENES", "2"))
-
-OFFTOPIC_TERMS = {
-    "pinara", "lycia", "lycian", "efes", "ephesus", "troy", "troya", "truva",
-    "ani", "hattusa", "hattusas", "pamukkale", "nemrut", "gordion",
-    "hierapolis", "side", "perge", "miletus", "milet", "aspendos",
-    "patara", "xanthos", "letuon", "myra", "olympos",
-}
-
-KNOWN_TOPICS = {
-    "gobeklitepe": {
-        "detect": ["gobekli", "gobeklitepe", "gobekli tepe", "karahantepe"],
-        "title": "gobekli tepe karahantepe",
-        "ai_stock_queries": [
-            "ai generated gobekli tepe reconstruction",
-            "gobekli tepe cinematic reconstruction",
-            "karahantepe cinematic reconstruction",
-            "neolithic stone temple cinematic reconstruction",
-            "prehistoric stone pillars cinematic reconstruction",
-            "ancient stone temple ai generated video",
-            "ancient ritual fire cinematic temple",
-            "buried ancient temple cinematic reconstruction",
-            "mysterious stone pillars fog cinematic",
-            "underground ancient temple cinematic",
-        ],
-        "stock_queries": [
-            "neolithic stone pillars",
-            "ancient stone pillars cinematic",
-            "archaeological excavation cinematic",
-            "ancient temple ruins cinematic",
-            "mysterious ancient ruins fog",
-            "stone temple ruins",
-            "torch fire ancient ruins",
-            "dark ancient temple",
-            "ancient underground ruins",
-        ],
-    },
-    "catalhoyuk": {
-        "detect": ["catalhoyuk", "catal hoyuk", "çatalhöyük"],
-        "title": "catalhoyuk",
-        "ai_stock_queries": [
-            "ai generated neolithic village reconstruction",
-            "neolithic settlement cinematic reconstruction",
-            "ancient mud brick village cinematic",
-        ],
-        "stock_queries": [
-            "archaeological excavation cinematic",
-            "ancient village ruins",
-            "mud brick ruins",
-        ],
-    },
-}
-
-GENERIC_AI_STOCK_QUERIES = [
-    "ai generated cinematic ancient ruins",
-    "cinematic ancient temple reconstruction",
-    "mysterious ancient ruins cinematic",
-    "ancient ritual fire cinematic",
-    "ancient underground temple cinematic",
-    "archaeological mystery cinematic",
-    "dark stone ruins cinematic",
-]
-
-GENERIC_STOCK_QUERIES = [
-    "ancient ruins cinematic",
-    "archaeological excavation",
-    "mysterious ruins fog",
-    "torch flame night",
-    "stone ruins landscape",
-]
+USER_AGENT = (
+    "AnadoluGizemleriPipeline/2.0 "
+    "(https://github.com/furukcell/anadolu-gizemleri-pipeline)"
+)
 
 
 def _turkish_to_ascii(text: str) -> str:
@@ -133,7 +61,13 @@ def _normalized(text: str) -> str:
     return _turkish_to_ascii(text or "").lower()
 
 
-def _unique(items):
+def _slug(text: str, max_len: int = 60) -> str:
+    norm = _normalized(text)
+    norm = re.sub(r"[^a-z0-9]+", "_", norm).strip("_")
+    return norm[:max_len].strip("_") or "scene"
+
+
+def _unique(items: Iterable[str]) -> list[str]:
     seen = set()
     out = []
     for item in items:
@@ -144,144 +78,33 @@ def _unique(items):
     return out
 
 
-def detect_topic(day_title: str, segments: list[dict]) -> str | None:
-    text = _normalized(day_title)
-    for seg in segments:
-        text += " " + _normalized(seg.get("scene_note", ""))
-        text += " " + _normalized(seg.get("narration", ""))
-
-    for topic, data in KNOWN_TOPICS.items():
-        if any(word in text for word in data["detect"]):
-            return topic
-    return None
-
-
-def classify_scene(index: int, scene_note: str, narration: str, day_title: str) -> str:
-    text = _normalized(f"{day_title} {scene_note} {narration}")
-
-    if index == 0:
-        return "intro"
-
-    historical_terms = [
-        "gobekli", "karahantepe", "catalhoyuk", "sutun", "dikilitas",
-        "kabartma", "kazi", "arkeolojik", "kalinti", "tas oda", "insan basi",
-    ]
-    atmosphere_terms = [
-        "siyah ekran", "ruzgar", "sis", "gece", "karanlik", "ates", "mesale",
-        "golge", "yildiz", "ekran kararir", "topragin", "gizemli",
-    ]
-    theory_terms = [
-        "neden", "bilerek", "gomdu", "gomuldu", "ritu", "inanc", "soru",
-        "belki", "korku", "sembol", "bilinmeyen", "sir", "sirlar",
-    ]
-
-    hist_score = sum(1 for t in historical_terms if t in text)
-    atm_score = sum(1 for t in atmosphere_terms if t in text)
-    theory_score = sum(1 for t in theory_terms if t in text)
-
-    if atm_score >= 2 and hist_score == 0:
-        return "atmosphere"
-    if theory_score >= 2 and hist_score <= 1:
-        return "theory"
-    if hist_score >= 1:
-        return "historical_detail"
-    if atm_score >= 1:
-        return "atmosphere"
-    return "mixed"
+def parse_time_to_seconds(value: str | int | float) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    value = str(value).strip()
+    if ":" not in value:
+        return float(value)
+    parts = [float(p) for p in value.split(":")]
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    if len(parts) == 3:
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    raise ValueError(f"Gecersiz zaman formati: {value}")
 
 
-def estimate_seconds(word_count: int) -> float:
-    if word_count <= 0:
-        return config.MIN_SCENE_SECONDS
-    seconds = word_count / WORDS_PER_SECOND
-    return max(config.MIN_SCENE_SECONDS, min(seconds, config.MAX_SCENE_SECONDS))
-
-
-def target_video_count(word_count: int, scene_type: str) -> int:
-    if scene_type == "intro":
-        return INTRO_VIDEO_COUNT
-    if word_count >= 55:
-        return LONG_SCENE_VIDEO_COUNT
-    if word_count >= 22:
-        return MEDIUM_SCENE_VIDEO_COUNT
-    return SHORT_SCENE_VIDEO_COUNT
-
-
-def _scene_keywords(scene_note: str, narration: str) -> list[str]:
-    text = _normalized(f"{scene_note} {narration}")
-    mapping = {
-        "sis": "fog", "gece": "night", "karanlik": "dark", "ates": "fire",
-        "mesale": "torch flame", "ruzgar": "wind", "toprak": "earth",
-        "kazi": "archaeological excavation", "tapinak": "ancient temple",
-        "sutun": "stone pillars", "dikilitas": "standing stones",
-        "kabartma": "stone carving", "giz": "mysterious",
-        "gom": "buried temple", "ritu": "ancient ritual",
-        "magara": "cave", "oda": "stone chamber",
-    }
-    hits = []
-    for tr, en in mapping.items():
-        if tr in text:
-            hits.append(en)
-    return hits[:3]
-
-
-def build_video_queries(scene_note: str, narration: str, day_title: str, scene_type: str, topic: str | None) -> list[str]:
-    topic_data = KNOWN_TOPICS.get(topic) if topic else None
-    scene_hits = _scene_keywords(scene_note, narration)
-    scene_tail = " ".join(scene_hits)
-
-    queries = []
-
-    if topic_data:
-        base_ai = topic_data["ai_stock_queries"]
-        base_stock = topic_data["stock_queries"]
-    else:
-        base_ai = GENERIC_AI_STOCK_QUERIES
-        base_stock = GENERIC_STOCK_QUERIES
-
-    # AI/cinematic stock aramasi ONCELIKLI.
-    for q in base_ai:
-        queries.append(f"{q} {scene_tail}".strip())
-
-    if scene_type == "intro":
-        queries = [
-            "ai generated cinematic ancient stone temple night",
-            "cinematic ancient stone temple night fog",
-            "mysterious stone pillars cinematic night",
-            "ancient temple reconstruction camera movement",
-        ] + queries
-    elif scene_type == "theory":
-        queries = [
-            "ai generated ancient ritual fire cinematic",
-            "mysterious ancient symbols cinematic video",
-            "buried temple cinematic reconstruction",
-        ] + queries
-    elif scene_type == "atmosphere":
-        queries = [
-            "dark ancient ruins fog cinematic",
-            "torch flame ancient ruins cinematic",
-            "mysterious stone temple fog video",
-        ] + queries
-    elif scene_type == "historical_detail":
-        # Tarihi detayda bile foto yok; yine video ariyoruz.
-        queries = [
-            "stone pillars archaeological site video",
-            "ancient stone carvings cinematic video",
-            "archaeological excavation cinematic video",
-        ] + queries
-
-    for q in base_stock:
-        queries.append(f"{q} {scene_tail}".strip())
-
-    return _unique(queries)
-
-
-def _get_with_retry(url, params=None, headers=None, stream=False):
+def _get_with_retry(url: str, params=None, headers=None, stream: bool = False):
     last_err = None
+    headers = headers or {}
+    headers.setdefault("User-Agent", USER_AGENT)
+
     for attempt in range(RETRY_COUNT + 1):
         try:
             resp = requests.get(
-                url, params=params, headers=headers, timeout=REQUEST_TIMEOUT, stream=stream
+                url,
+                params=params,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+                stream=stream,
             )
             if resp.status_code == 200:
                 return resp
@@ -292,87 +115,147 @@ def _get_with_retry(url, params=None, headers=None, stream=False):
         if attempt < RETRY_COUNT:
             time.sleep(RETRY_SLEEP)
 
-    # Logu bogmamak icin sadece kisa bas.
-    print(f"[image_fetch] Istek basarisiz: {last_err} -> {url}")
+    print(f"[image_fetch] Istek basarisiz: {url} -> {last_err}")
     return None
 
 
-def _is_offtopic(text: str) -> bool:
+def find_visual_plan(day: int) -> Path:
+    plan_dir = config.CONTENT_DIR / "visual_plans"
+    candidates = sorted(plan_dir.glob(f"{day:02d}_*_visual_plan.json"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"Gorsel plan bulunamadi: {plan_dir}/{day:02d}_*_visual_plan.json\n"
+            "V6 VIDEO-ONLY mod plan dosyasi olmadan calismaz."
+        )
+    return candidates[0]
+
+
+def load_visual_plan(day: int) -> dict:
+    plan_path = find_visual_plan(day)
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    scenes = plan.get("scenes", [])
+    if not scenes:
+        raise ValueError(f"Gorsel plan bos veya hatali: {plan_path}")
+
+    for i, scene in enumerate(scenes):
+        scene.setdefault("index", i)
+        scene.setdefault("desired_media_count", 2)
+        scene.setdefault("allow_photo", False)
+        scene.setdefault("must_be_video", True)
+        scene.setdefault("search_queries", [])
+        scene.setdefault("fallback_queries", [])
+        scene.setdefault("avoid", [])
+
+        start = parse_time_to_seconds(scene["start"])
+        end = parse_time_to_seconds(scene["end"])
+        if end <= start:
+            raise ValueError(f"Gorsel planda sahne suresi hatali: index={i}, {scene['start']}->{scene['end']}")
+        scene["_duration"] = round(end - start, 3)
+
+    print(f"[image_fetch] Gorsel plan yuklendi -> {plan_path}")
+    print("[image_fetch] VIDEO-ONLY MOD AKTIF: fotograf/Wikimedia/Ken Burns yok.")
+    print(f"[image_fetch] Plan sahne sayisi: {len(scenes)}, hedef sure: {sum(s['_duration'] for s in scenes):.1f}s")
+    return plan
+
+
+def get_video_duration(path: Path) -> float:
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr[-1000:])
+    return float(result.stdout.strip())
+
+
+def validate_video(path: Path) -> bool:
+    try:
+        if not path.exists() or path.stat().st_size < MIN_VIDEO_BYTES:
+            return False
+        duration = get_video_duration(path)
+        return duration >= MIN_VIDEO_DURATION
+    except Exception:
+        return False
+
+
+def _offtopic(text: str, avoid_terms: list[str]) -> bool:
     norm = _normalized(text)
-    return any(term in norm for term in OFFTOPIC_TERMS)
+    for bad in avoid_terms:
+        if _normalized(bad) in norm:
+            return True
+    return False
 
 
-def _best_pexels_video_link(video: dict):
-    video_files = video.get("video_files", [])
-    if not video_files:
+def _best_pexels_video_link(video: dict) -> str | None:
+    files = video.get("video_files", [])
+    if not files:
         return None
 
-    # Sadece mp4 ve yataya yakin dosyalari tercih et.
-    filtered = []
-    for vf in video_files:
-        link = vf.get("link")
-        width = vf.get("width") or 0
-        height = vf.get("height") or 0
-        if not link:
-            continue
-        if "mp4" not in (vf.get("file_type") or "video/mp4"):
-            continue
-        if width and height and width < height:
-            continue
-        filtered.append(vf)
-
-    if not filtered:
-        filtered = [vf for vf in video_files if vf.get("link")]
-
-    def score(vf):
+    # Oncelik: yatay, genisligi 1280+ ve 1920'ye yakin MP4.
+    def score(vf: dict):
         w = vf.get("width") or 0
         h = vf.get("height") or 0
-        # 1920x1080'e yakinlik
-        return abs(w - config.VIDEO_WIDTH) + abs(h - config.VIDEO_HEIGHT)
+        file_type = vf.get("file_type") or ""
+        is_mp4 = 0 if "mp4" in file_type.lower() else 1000
+        landscape_penalty = 0 if w >= h else 500
+        width_penalty = abs((w or config.VIDEO_WIDTH) - config.VIDEO_WIDTH) / 10
+        too_small_penalty = 300 if w and w < 1280 else 0
+        return is_mp4 + landscape_penalty + width_penalty + too_small_penalty
 
-    best = sorted(filtered, key=score)[0]
+    best = sorted(files, key=score)[0]
     return best.get("link")
 
 
-def search_pexels_video_candidates(query: str):
+def search_pexels_videos(query: str, avoid_terms: list[str]) -> list[dict]:
     if not config.PEXELS_API_KEY:
+        print("[image_fetch] PEXELS_API_KEY tanimli degil, Pexels video atlaniyor.")
         return []
 
-    headers = {"Authorization": config.PEXELS_API_KEY}
-    params = {"query": query, "per_page": 12, "orientation": "landscape"}
+    headers = {"Authorization": config.PEXELS_API_KEY, "User-Agent": USER_AGENT}
+    params = {
+        "query": query,
+        "per_page": DEFAULT_PER_PAGE,
+        "orientation": "landscape",
+    }
     resp = _get_with_retry(PEXELS_VIDEO_API, params=params, headers=headers)
     if not resp:
         return []
 
-    urls = []
+    out = []
     for video in resp.json().get("videos", []):
         meta_text = " ".join([
             str(video.get("url", "")),
             str(video.get("user", {}).get("name", "")),
+            query,
         ])
-        if _is_offtopic(meta_text):
+        if _offtopic(meta_text, avoid_terms):
             continue
+        link = _best_pexels_video_link(video)
+        if link:
+            out.append({
+                "url": link,
+                "source": "pexels_video",
+                "query": query,
+                "meta_url": video.get("url", ""),
+            })
+    return out
 
-        url = _best_pexels_video_link(video)
-        if url:
-            urls.append(url)
-    return _unique(urls)
 
-
-def _best_pixabay_video_url(hit: dict):
-    videos = hit.get("videos", {})
-    # Large cok agir olabilir; medium genelde yeterli ve hizli.
+def _best_pixabay_video_link(video: dict) -> str | None:
+    videos = video.get("videos", {})
+    # large yoksa medium, o da yoksa small.
     for key in ("large", "medium", "small", "tiny"):
         item = videos.get(key) or {}
         url = item.get("url")
-        width = item.get("width") or 0
-        height = item.get("height") or 0
-        if url and (not width or width >= height):
+        if url:
             return url
     return None
 
 
-def search_pixabay_video_candidates(query: str):
+def search_pixabay_videos(query: str, avoid_terms: list[str]) -> list[dict]:
     api_key = os.environ.get("PIXABAY_API_KEY", "")
     if not api_key:
         return []
@@ -381,190 +264,237 @@ def search_pixabay_video_candidates(query: str):
         "key": api_key,
         "q": query,
         "video_type": "film",
-        "orientation": "horizontal",
-        "per_page": 12,
         "safesearch": "true",
+        "per_page": DEFAULT_PER_PAGE,
+        "min_width": 1280,
     }
     resp = _get_with_retry(PIXABAY_VIDEO_API, params=params)
     if not resp:
         return []
 
-    urls = []
-    for hit in resp.json().get("hits", []):
+    out = []
+    for video in resp.json().get("hits", []):
         meta_text = " ".join([
-            str(hit.get("tags", "")),
-            str(hit.get("pageURL", "")),
-            str(hit.get("user", "")),
+            str(video.get("tags", "")),
+            str(video.get("user", "")),
+            query,
         ])
-        if _is_offtopic(meta_text):
+        if _offtopic(meta_text, avoid_terms):
             continue
-        url = _best_pixabay_video_url(hit)
-        if url:
-            urls.append(url)
-    return _unique(urls)
+        link = _best_pixabay_video_link(video)
+        if link:
+            out.append({
+                "url": link,
+                "source": "pixabay_video",
+                "query": query,
+                "meta_url": f"https://pixabay.com/videos/id-{video.get('id')}/",
+            })
+    return out
+
+
+def iter_video_candidates(query: str, avoid_terms: list[str]):
+    # Once Pexels; Pixabay key varsa ikinci kaynak olarak dener.
+    for item in search_pexels_videos(query, avoid_terms):
+        yield item
+    for item in search_pixabay_videos(query, avoid_terms):
+        yield item
 
 
 def download_video(url: str, dest_path: Path) -> bool:
+    tmp_path = dest_path.with_suffix(dest_path.suffix + ".tmp")
+    tmp_path.unlink(missing_ok=True)
+
     resp = _get_with_retry(url, stream=True)
     if not resp:
         return False
 
-    content_type = (resp.headers.get("content-type") or "").lower()
-    # Bazı CDN'ler content-type bos donebilir; sadece text/html ise reddet.
-    if "text/html" in content_type:
-        return False
-
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = dest_path.with_suffix(".tmp")
-
     total = 0
-    with tmp_path.open("wb") as f:
-        for chunk in resp.iter_content(chunk_size=1024 * 1024):
-            if not chunk:
-                continue
-            total += len(chunk)
-            f.write(chunk)
+    try:
+        with tmp_path.open("wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                f.write(chunk)
+                # Cok dev dosyalar workflow'u bogmasin; 250 MB ustunu kes.
+                if total > 250 * 1024 * 1024:
+                    print(f"[image_fetch] Video cok buyuk, atlandi: {url}")
+                    tmp_path.unlink(missing_ok=True)
+                    return False
 
-    if total < 100_000:
+        if total < MIN_VIDEO_BYTES:
+            tmp_path.unlink(missing_ok=True)
+            return False
+
+        tmp_path.replace(dest_path)
+        if not validate_video(dest_path):
+            dest_path.unlink(missing_ok=True)
+            return False
+        return True
+    except Exception as e:
+        print(f"[image_fetch] Video indirme/validasyon hatasi: {e}")
         tmp_path.unlink(missing_ok=True)
+        dest_path.unlink(missing_ok=True)
         return False
 
-    tmp_path.replace(dest_path)
-    return True
 
+def fetch_videos_for_scene(scene: dict, media_dir: Path, used_urls: set[str], global_avoid: list[str]) -> list[dict]:
+    scene_index = int(scene["index"])
+    desired_count = int(scene.get("desired_media_count", 2))
+    label = scene.get("label") or f"sahne_{scene_index}"
+    avoid_terms = list(global_avoid) + list(scene.get("avoid", []))
 
-def video_candidates_for_queries(queries):
-    # Once Pixabay varsa onu dene, sonra Pexels. Ikisi de sadece MP4 video.
-    for query in queries:
-        for url in search_pixabay_video_candidates(query):
-            yield "video", "pixabay_video", query, url
-        for url in search_pexels_video_candidates(query):
-            yield "video", "pexels_video", query, url
+    queries = _unique(scene.get("search_queries", []) + scene.get("fallback_queries", []))
+    if not queries:
+        raise ValueError(f"Sahne {scene_index} icin search_queries yok: {label}")
 
+    items = []
+    query_offset = 0
 
-def fetch_one_video(scene_index, item_index, queries, dest_dir, used_urls):
-    base_name = f"scene_{scene_index:02d}_{item_index:02d}"
-    for media_type, source, used_query, url in video_candidates_for_queries(queries):
-        if url in used_urls:
-            continue
+    while len(items) < desired_count and query_offset < len(queries):
+        query = queries[query_offset]
+        query_offset += 1
 
-        dest_path = dest_dir / f"{base_name}.mp4"
-        if download_video(url, dest_path):
-            used_urls.add(url)
-            return {
-                "media_path": str(dest_path.relative_to(config.BASE_DIR)),
-                "media_type": "video",
-                "media_source": source,
-                "media_query": used_query,
-                "source_url": url,
-            }
-    return None
+        for candidate in iter_video_candidates(query, avoid_terms):
+            url = candidate["url"]
+            if url in used_urls:
+                continue
+
+            base_name = f"scene_{scene_index:02d}_{len(items):02d}_{_slug(label, 32)}"
+            dest_path = media_dir / f"{base_name}.mp4"
+
+            if download_video(url, dest_path):
+                used_urls.add(url)
+                item = {
+                    "media_path": str(dest_path.relative_to(config.BASE_DIR)),
+                    "media_type": "video",
+                    "media_source": candidate["source"],
+                    "media_query": candidate["query"],
+                    "source_url": candidate.get("meta_url") or url,
+                    "direct_url": url,
+                }
+                items.append(item)
+                print(
+                    f"[image_fetch] Sahne {scene_index}.{len(items)-1}: "
+                    f"[video] {item['media_source']} -> {item['media_query']}"
+                )
+                break
+
+        # Bir query'den birden fazla klip de kullanabilmek icin tekrar sona ekle ama
+        # ilk turda farkli query'ler denensin.
+        if len(items) < desired_count and query_offset >= len(queries):
+            # Ikinci tur: ayni query'lerden baska candidate cikarsa dene.
+            break
+
+    # Ikinci pas: ilk pas yetmezse tum query'leri tekrar tara.
+    if len(items) < desired_count:
+        for query in queries:
+            if len(items) >= desired_count:
+                break
+            for candidate in iter_video_candidates(query, avoid_terms):
+                url = candidate["url"]
+                if url in used_urls:
+                    continue
+                base_name = f"scene_{scene_index:02d}_{len(items):02d}_{_slug(label, 32)}"
+                dest_path = media_dir / f"{base_name}.mp4"
+                if download_video(url, dest_path):
+                    used_urls.add(url)
+                    item = {
+                        "media_path": str(dest_path.relative_to(config.BASE_DIR)),
+                        "media_type": "video",
+                        "media_source": candidate["source"],
+                        "media_query": candidate["query"],
+                        "source_url": candidate.get("meta_url") or url,
+                        "direct_url": url,
+                    }
+                    items.append(item)
+                    print(
+                        f"[image_fetch] Sahne {scene_index}.{len(items)-1}: "
+                        f"[video] {item['media_source']} -> {item['media_query']}"
+                    )
+                    break
+
+    if not items:
+        raise RuntimeError(
+            f"Sahne {scene_index} icin hic GERCEK mp4 video bulunamadi: {label}\n"
+            f"Denenen sorgular: {queries[:5]}"
+        )
+
+    return items
 
 
 def process_day(day: int, save_json: bool = True) -> dict:
-    parsed_path = config.OUTPUT_DIR / f"video_{day:02d}" / "script_parsed.json"
-    if not parsed_path.exists():
-        raise FileNotFoundError(
-            f"script_parsed.json bulunamadi: {parsed_path}. Once script_parse.py calistirilmali."
-        )
+    plan = load_visual_plan(day)
+    scenes_plan = plan["scenes"]
 
-    parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
-    day_title = parsed["title"]
-    segments = parsed["segments"]
-    topic = detect_topic(day_title, segments)
+    video_dir = config.OUTPUT_DIR / f"video_{day:02d}"
+    media_dir = video_dir / "media"
 
-    print("[image_fetch] VIDEO-ONLY MOD AKTIF: fotograf/Wikimedia/Ken Burns yok.")
-    print(f"[image_fetch] Topic context: {topic or 'general'}")
-    print("[image_fetch] Kaynaklar: Pixabay video API (varsa) + Pexels video API")
-    print(f"[image_fetch] Minimum toplam video hedefi: {MIN_TOTAL_VIDEOS}")
-
-    media_dir = config.OUTPUT_DIR / f"video_{day:02d}" / "media"
+    if media_dir.exists():
+        shutil.rmtree(media_dir)
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    used_urls = set()
+    global_avoid = plan.get("global_rules", {}).get("avoid_global", [])
+    used_urls: set[str] = set()
     scenes = []
 
-    for idx, seg in enumerate(segments):
-        scene_note = seg.get("scene_note") or ""
-        narration = seg.get("narration", "")
-        word_count = len(narration.split())
-        scene_type = classify_scene(idx, scene_note, narration, day_title)
-        desired_count = target_video_count(word_count, scene_type)
+    for idx, scene in enumerate(scenes_plan):
+        scene["index"] = idx
+        items = fetch_videos_for_scene(scene, media_dir, used_urls, global_avoid)
+        first = items[0]
 
-        video_queries = build_video_queries(scene_note, narration, day_title, scene_type, topic)
-
-        media_items = []
-        for item_idx in range(desired_count):
-            # Her parca icin query listesini kaydir; ayni klipleri azaltir.
-            rotated = video_queries[item_idx:] + video_queries[:item_idx]
-            item = fetch_one_video(idx, item_idx, rotated, media_dir, used_urls)
-            if item:
-                media_items.append(item)
-                print(
-                    f"[image_fetch] Gun {day} sahne {idx}.{item_idx}: "
-                    f"[video] {item['media_source']} -> {item['media_query']}"
-                )
-
-        if not media_items:
-            print(f"[image_fetch] Gun {day} sahne {idx}: VIDEO BULUNAMADI -> {video_queries[0]}")
-
-        first = media_items[0] if media_items else {}
         scenes.append({
             "index": idx,
-            "scene_type": scene_type,
-            "scene_note": scene_note,
-            "narration": narration,
-            "word_count": word_count,
-            "estimated_seconds": round(estimate_seconds(word_count), 2),
-            "media_items": media_items,
-            # Eski youtube_montaj uyumlulugu:
+            "scene_type": "planned_video",
+            "scene_note": scene.get("label", ""),
+            "visual_description": scene.get("description", ""),
+            "start": scene.get("start"),
+            "end": scene.get("end"),
+            "estimated_seconds": round(float(scene["_duration"]), 3),
+            "word_count": 0,
+            "narration": "",
+            "must_be_video": True,
+            "allow_photo": False,
+            "media_items": items,
             "media_path": first.get("media_path"),
-            "media_type": first.get("media_type", "none"),
-            "media_source": first.get("media_source", "none"),
-            "media_query": first.get("media_query", video_queries[0] if video_queries else ""),
-            "video_queries": video_queries[:8],
-            "photo_queries": [],
-            "ai_video_queries": video_queries[:8],
+            "media_type": "video",
+            "media_source": first.get("media_source"),
+            "media_query": first.get("media_query"),
+            "overlay_text": scene.get("overlay_text"),
+            "overlay_text_sequence": scene.get("overlay_text_sequence"),
+            "search_queries": scene.get("search_queries", []),
+            "fallback_queries": scene.get("fallback_queries", []),
         })
 
-    all_items = [item for scene in scenes for item in scene.get("media_items", [])]
-    missing = [s for s in scenes if not s.get("media_items")]
-    video_count = len(all_items)
+    result = {
+        "day": day,
+        "title": plan.get("title", f"Gun {day}"),
+        "visual_plan": True,
+        "video_only": True,
+        "allow_photos": False,
+        "target_duration_seconds": plan.get("target_duration_seconds"),
+        "scenes": scenes,
+    }
 
     if save_json:
-        manifest_path = config.OUTPUT_DIR / f"video_{day:02d}" / "images_manifest.json"
-        result = {
-            "day": day,
-            "title": day_title,
-            "mode": "video_only",
-            "topic": topic,
-            "scenes": scenes,
-        }
+        manifest_path = video_dir / "images_manifest.json"
         manifest_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"[image_fetch] Gun {day} tamamlandi -> {manifest_path}")
-    else:
-        result = {"day": day, "title": day_title, "mode": "video_only", "topic": topic, "scenes": scenes}
 
-    print(f"[image_fetch] Gun {day}: 0 foto, {video_count} GERCEK MP4 video klip kullanildi.")
-    print(f"[image_fetch] Medyasiz sahne sayisi: {len(missing)}")
+    all_items = [item for scene in scenes for item in scene.get("media_items", [])]
+    video_count = sum(1 for item in all_items if item.get("media_type") == "video")
+    image_count = sum(1 for item in all_items if item.get("media_type") == "image")
 
-    if video_count < MIN_TOTAL_VIDEOS:
-        raise RuntimeError(
-            f"Yeterli video bulunamadi: {video_count}/{MIN_TOTAL_VIDEOS}. "
-            f"PEXELS_API_KEY/PIXABAY_API_KEY ve query kalitesini kontrol et."
-        )
-
-    if len(missing) > MAX_MISSING_SCENES:
-        raise RuntimeError(
-            f"Cok fazla sahne videosuz kaldi: {len(missing)} sahne. "
-            f"Bu haliyle fotograf/black screen hissi olusur; pipeline durduruldu."
-        )
-
+    print(f"[image_fetch] Gun {day}: {image_count} foto, {video_count} GERCEK MP4 video klip, toplam {len(all_items)} medya.")
+    if image_count != 0:
+        raise RuntimeError("VIDEO-ONLY modda foto uretilmemeliydi; manifest hatali.")
     return result
 
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1:
         process_day(int(sys.argv[1]))
     else:
