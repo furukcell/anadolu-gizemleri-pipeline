@@ -1,0 +1,100 @@
+name: Anadolu Gizemleri - Video Uret ve Yukle
+
+# TETIKLEME:
+#  1) content/raw_audio/NN.mp3 dosyasi push edilince otomatik calisir
+#     (kullanici ham ses kaydini GitHub web arayuzunden yukleyince)
+#  2) Actions sekmesinden "Run workflow" ile manuel de tetiklenebilir
+#     (bu durumda hangi gunun isleneceni "day" input'undan alir)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "content/raw_audio/*.mp3"
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "Islenecek gun numarasi (1-30)"
+        required: true
+        type: number
+
+# Ayni anda birden fazla calismasin - state/uploaded.json uzerinde
+# yaris durumu (race condition) olmasin diye.
+concurrency:
+  group: anadolu-gizemleri-pipeline
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Repoyu checkout et
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # push event'inde degisen dosyayi bulmak icin en az 2 commit gerekli
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ffmpeg kur
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Python bagimliliklarini kur
+        run: pip install -r requirements.txt
+
+      - name: Islenecek gun numarasini belirle
+        id: determine_day
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DAY="${{ github.event.inputs.day }}"
+            echo "[workflow] Manuel tetikleme, gun: $DAY"
+          else
+            # Bu commit'te degisen dosyalar arasinda content/raw_audio/NN.mp3 ara
+            CHANGED_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" \
+              | grep -E '^content/raw_audio/[0-9]+\.mp3$' | head -n 1)
+
+            if [ -z "$CHANGED_FILE" ]; then
+              echo "[workflow] HATA: content/raw_audio/NN.mp3 formatinda degisen dosya bulunamadi."
+              exit 1
+            fi
+
+            DAY=$(basename "$CHANGED_FILE" .mp3 | sed 's/^0*//')
+            echo "[workflow] Otomatik tetikleme, degisen dosya: $CHANGED_FILE -> gun: $DAY"
+          fi
+
+          echo "day=$DAY" >> "$GITHUB_OUTPUT"
+
+      - name: Google credentials dosyasini olustur
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > google_credentials.json
+
+      - name: Pipeline'i calistir
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
+        run: python pipeline.py ${{ steps.determine_day.outputs.day }}
+
+      - name: Google credentials dosyasini sil (guvenlik)
+        if: always()
+        run: rm -f google_credentials.json
+
+      - name: uploaded.json'i repoya geri yaz
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/uploaded.json
+          git diff --staged --quiet || git commit -m "chore: gun ${{ steps.determine_day.outputs.day }} yukleme kaydi guncellendi [skip ci]"
+          git push
+
+      - name: Uretilen dosyalari artifact olarak sakla (hata ayiklama icin)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output-day-${{ steps.determine_day.outputs.day }}
+          path: |
+            output/video_${{ steps.determine_day.outputs.day }}/
+          retention-days: 7
