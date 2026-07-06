@@ -5,25 +5,17 @@ Tum adimlari (script_parse -> ses -> image_fetch -> youtube_montaj ->
 youtube_upload) tek komutla sirayla calistiran orkestrator.
 
 SES KAYNAGI SECIMI:
-  Once content/raw_audio/NN.mp3 (kullanicinin kendi kaydi) aranir.
-  Bulunursa voice_postprocess.py ile islenir.
-  Bulunamazsa google_tts_generate.py ile TTS uretilir (fallback).
-
-Herhangi bir adim basarisiz olursa pipeline durur, hangi adimda ve
-neden basarisiz oldugu acikca yazdirilir - boylece hatanin nerede
-oldugu telefondan bile anlasilir.
+  Bu surumda TTS fallback tamamen kapali.
+  Once content/raw_audio/NN.mp3 aranir.
+  Bulunamazsa kolaylik icin content/raw_audio/N.mp3 de aranir.
+  Ikisi de yoksa pipeline DURUR; Google TTS'e dusmez.
 
 Kullanim:
-  python pipeline.py <gun_numarasi>              # tum adimlar + upload
-  python pipeline.py <gun_numarasi> --no-upload   # upload'siz test (video
-                                                      dosyasini uretir ama
-                                                      YouTube'a yuklemez)
-
-Ornek:
-  python pipeline.py 1
-  python pipeline.py 1 --no-upload
+  python pipeline.py <gun_numarasi>
+  python pipeline.py <gun_numarasi> --no-upload
 """
 
+import json
 import sys
 import time
 import traceback
@@ -41,57 +33,68 @@ except ImportError:
 
 
 # =========================================================
-# ADIM: SES URETIMI (kullanici kaydi ONCELIKLI, TTS fallback)
+# ADIM: SES ISLEME - SADECE KULLANICI SESI, TTS YOK
 # =========================================================
+def _candidate_raw_audio_paths(day: int) -> list[Path]:
+    """Day 1 icin hem 01.mp3 hem 1.mp3 desteklenir."""
+    raw_dir = config.CONTENT_DIR / "raw_audio"
+    return [
+        raw_dir / f"{day:02d}.mp3",
+        raw_dir / f"{day}.mp3",
+    ]
+
+
+def _find_raw_audio(day: int) -> Path:
+    for path in _candidate_raw_audio_paths(day):
+        if path.exists():
+            return path
+
+    expected = ", ".join(str(p) for p in _candidate_raw_audio_paths(day))
+    raise FileNotFoundError(
+        "KULLANICI SES KAYDI BULUNAMADI. TTS bilerek kapali.\n"
+        f"Gun {day} icin su dosyalardan biri gerekli: {expected}\n"
+        "GitHub'da Add file -> Upload files ile gercek mp3 dosyasini yukle. "
+        "Create new file ile bos .mp3 olusturma."
+    )
+
+
 def run_voice_step(day: int) -> Path:
     """
-    Once content/raw_audio/NN.mp3 (kullanicinin kendi kaydi) aranir.
-    Varsa voice_postprocess.py ile islenir. Yoksa google_tts_generate.py
-    ile TTS uretilir.
-
-    Doner: output/video_NN/voiceover.mp3 yolu
+    Kullanici ham ses kaydini isler.
+    TTS fallback YOKTUR. Ses yoksa pipeline hata verip durur.
     """
-    raw_audio_path = config.CONTENT_DIR / "raw_audio" / f"{day:02d}.mp3"
+    raw_audio_path = _find_raw_audio(day)
     expected_output = config.OUTPUT_DIR / f"video_{day:02d}" / "voiceover.mp3"
+    voice_source_path = config.OUTPUT_DIR / f"video_{day:02d}" / "voice_source.json"
 
-    if raw_audio_path.exists():
-        print(f"[pipeline] Gun {day}: kullanici ses kaydi bulundu -> {raw_audio_path.name}")
-        import voice_postprocess
-        return voice_postprocess.process_voice(str(raw_audio_path), day)
+    print("[pipeline] SES MODU: SADECE KULLANICI SESI")
+    print("[pipeline] TTS FALLBACK: KAPALI")
+    print(f"[pipeline] Gun {day}: kullanici ses kaydi bulundu -> {raw_audio_path}")
 
-    print(f"[pipeline] Gun {day}: kullanici ses kaydi yok, TTS kullanilacak.")
-    try:
-        import google_tts_generate
-    except ImportError as e:
-        raise RuntimeError(
-            "Ne kullanici kaydi (content/raw_audio/NN.mp3) ne de "
-            "google_tts_generate.py modulu bulunamadi. Ses uretilemedi."
-        ) from e
+    # Onceki denemeden kalmis TTS/voiceover dosyasi varsa sil.
+    # Boylece isleme basarisiz olursa eski otomatik ses yanlislikla montaja girmez.
+    expected_output.unlink(missing_ok=True)
+    voice_source_path.unlink(missing_ok=True)
 
-    # google_tts_generate.py'nin tam fonksiyon adini bilmiyoruz - birkac
-    # olasi adi deneriz. Hicbiri calismazsa acik bir hata verir.
-    candidate_function_names = [
-        "generate_voiceover",
-        "generate_tts",
-        "synthesize_day",
-        "generate_day",
-        "main",
-    ]
-    for fn_name in candidate_function_names:
-        fn = getattr(google_tts_generate, fn_name, None)
-        if callable(fn):
-            print(f"[pipeline] google_tts_generate.{fn_name}({day}) cagriliyor...")
-            fn(day)
-            if expected_output.exists():
-                return expected_output
-            break
+    import voice_postprocess
 
-    if not expected_output.exists():
-        raise RuntimeError(
-            f"TTS calistirildi ama beklenen dosya olusmadi: {expected_output}. "
-            f"google_tts_generate.py'nin fonksiyon adini kontrol et."
-        )
-    return expected_output
+    voiceover_path = voice_postprocess.process_voice(str(raw_audio_path), day)
+
+    source_info = {
+        "source": "user_raw_audio",
+        "raw_audio_path": str(raw_audio_path.relative_to(config.BASE_DIR)),
+        "output_path": str(voiceover_path.relative_to(config.BASE_DIR)),
+        "tts_fallback": False,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    voice_source_path.parent.mkdir(parents=True, exist_ok=True)
+    voice_source_path.write_text(json.dumps(source_info, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[pipeline] SES KAYNAGI KAYDI -> {voice_source_path}")
+
+    if not voiceover_path.exists():
+        raise RuntimeError(f"Kullanici sesi islendi deniyor ama cikti yok: {voiceover_path}")
+
+    return voiceover_path
 
 
 # =========================================================
@@ -107,37 +110,36 @@ def run_pipeline(day: int, do_upload: bool = True):
 
     try:
         # 1) Senaryo ayristirma
-        print(f"[pipeline] ADIM 1/5: script_parse.py")
+        print("[pipeline] ADIM 1/5: script_parse.py")
         parsed = script_parse.parse_day(day)
         steps_completed.append("script_parse")
         print(f"[pipeline] OK -> Baslik: '{parsed['title']}', "
               f"{parsed['segment_count']} sahne, {parsed['word_count']} kelime\n")
 
-        # 2) Ses uretimi
-        print(f"[pipeline] ADIM 2/5: ses uretimi (kullanici kaydi / TTS)")
+        # 2) Kullanici sesini isleme
+        print("[pipeline] ADIM 2/5: ses isleme (SADECE kullanici kaydi, TTS yok)")
         voiceover_path = run_voice_step(day)
         steps_completed.append("voice")
         print(f"[pipeline] OK -> {voiceover_path}\n")
 
         # 3) Gorsel/video toplama
-        print(f"[pipeline] ADIM 3/5: image_fetch.py")
+        print("[pipeline] ADIM 3/5: image_fetch.py")
         image_fetch.process_day(day)
         steps_completed.append("image_fetch")
-        print(f"[pipeline] OK -> medya toplama tamamlandi\n")
+        print("[pipeline] OK -> medya toplama tamamlandi\n")
 
         # 4) Video montaj
-        print(f"[pipeline] ADIM 4/5: youtube_montaj.py")
+        print("[pipeline] ADIM 4/5: youtube_montaj.py")
         video_path = youtube_montaj.montage_day(day)
         steps_completed.append("youtube_montaj")
         print(f"[pipeline] OK -> {video_path}\n")
 
-        # 5) YouTube'a yukleme (opsiyonel)
+        # 5) YouTube'a yukleme
         if do_upload:
-            print(f"[pipeline] ADIM 5/5: youtube_upload.py")
+            print("[pipeline] ADIM 5/5: youtube_upload.py")
             if youtube_upload is None:
                 raise RuntimeError(
-                    "youtube_upload.py import edilemedi (google-api-python-client "
-                    "kurulu olmayabilir). requirements.txt'i kontrol et."
+                    "youtube_upload.py import edilemedi. requirements.txt'i kontrol et."
                 )
             video_id = youtube_upload.upload_video(day)
             steps_completed.append("youtube_upload")
@@ -175,4 +177,3 @@ if __name__ == "__main__":
     no_upload = "--no-upload" in sys.argv
 
     run_pipeline(gun, do_upload=not no_upload)
-  

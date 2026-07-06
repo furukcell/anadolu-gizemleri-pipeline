@@ -1,29 +1,11 @@
 """
 voice_postprocess.py
 ---------------------
-Kullanicinin kendi sesiyle kaydettigi HAM anlatim dosyasini (ornek:
-content/raw_audio/NN.mp3) alir, test edilip onaylanan ffmpeg zincirini
-uygulayarak "temiz studyo + tok + net" belgesel anlatici tonuna cevirir.
-Cikti: output/video_NN/voiceover.mp3
+Kullanicinin kendi sesiyle kaydettigi HAM anlatim dosyasini
+(content/raw_audio/NN.mp3 veya content/raw_audio/N.mp3) isler ve
+output/video_NN/voiceover.mp3 olarak kaydeder.
 
-Zincir (test edilen v3 - echo/pitch degisikligi YOK, sadece temizlik +
-netlik + sakin ton):
-  1) highpass       -> ~100Hz alti (rumble/boom) temizlenir
-  2) afftdn         -> arka plan gurultusu (nefes, oda hisi) azaltilir
-  3) acompressor    -> ses seviyesi sakin/dogal sekilde esitlenir
-  4) equalizer 120Hz -> hafif sicaklik/derinlik (+2dB)
-  5) equalizer 500Hz -> "kutu icinde/boguk" hissi kirilir (-2dB)
-  6) equalizer 3500Hz -> netlik/anlasilirlik artirilir (+2dB)
-  7) equalizer 7500Hz -> sertlik/tislik yumusatilir (-3dB)
-  8) loudnorm       -> YouTube standardina uygun loudness (-16 LUFS)
-
-Not: echo/reverb ve pitch degisikligi KASITLI OLARAK yok - kullanicinin
-onayladigi test (v3), pitch/echo eklenen versiyonlarin "bogu k/bos oda"
-hissi verdigini gosterdi.
-
-Kullanim:
-  python voice_postprocess.py <ham_ses_dosyasi> <gun_numarasi>
-  Ornek: python voice_postprocess.py content/raw_audio/01.mp3 1
+Bu dosya kesinlikle TTS uretmez. Sadece verilen ham kullanici sesini temizler.
 """
 
 import subprocess
@@ -31,9 +13,6 @@ from pathlib import Path
 
 import config
 
-# =========================================================
-# FFMPEG FILTRE ZINCIRI (test edilen v3, onaylandi)
-# =========================================================
 AUDIO_FILTER_CHAIN = (
     "highpass=f=100,"
     "afftdn=nr=18:nf=-30,"
@@ -46,6 +25,8 @@ AUDIO_FILTER_CHAIN = (
 )
 
 OUTPUT_SAMPLE_RATE = 44100
+MIN_RAW_AUDIO_BYTES = 100 * 1024      # bos/yanlis dosya yakalama
+MIN_RAW_AUDIO_SECONDS = 30.0          # uzun video icin cok kisa kaydi hata say
 
 
 def run_ffmpeg(cmd: list, description: str):
@@ -56,11 +37,17 @@ def run_ffmpeg(cmd: list, description: str):
         raise RuntimeError(f"ffmpeg basarisiz oldu: {description}")
 
 
-def validate_raw_audio(raw_path: Path):
+def validate_raw_audio(raw_path: Path) -> float:
     if not raw_path.exists():
         raise FileNotFoundError(f"Ham ses dosyasi bulunamadi: {raw_path}")
 
-    # ffprobe ile suresini kontrol et - cok kisa/bos dosya varsa erken uyar
+    file_size = raw_path.stat().st_size
+    if file_size < MIN_RAW_AUDIO_BYTES:
+        raise RuntimeError(
+            f"Ham ses dosyasi cok kucuk/bozuk gorunuyor: {raw_path} "
+            f"({file_size} byte). Gercek mp3 dosyasini Upload files ile yukle."
+        )
+
     cmd = [
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration",
@@ -71,26 +58,31 @@ def validate_raw_audio(raw_path: Path):
     if result.returncode != 0:
         raise RuntimeError(f"Ham ses dosyasi okunamadi (bozuk olabilir): {raw_path}")
 
-    duration = float(result.stdout.strip())
-    if duration < 10:
-        print(f"[voice_postprocess] UYARI: ses dosyasi cok kisa ({duration:.1f}s). "
-              f"Yanlis dosya yuklenmis olabilir.")
+    try:
+        duration = float(result.stdout.strip())
+    except ValueError as e:
+        raise RuntimeError(f"Ham ses suresi okunamadi: {raw_path}") from e
+
+    if duration < MIN_RAW_AUDIO_SECONDS:
+        raise RuntimeError(
+            f"Ham ses dosyasi cok kisa ({duration:.1f}s): {raw_path}. "
+            "Yanlis dosya yuklenmis olabilir."
+        )
+
+    print(f"[voice_postprocess] Ham ses dogrulandi: {raw_path.name}, {duration:.1f}s, {file_size} byte")
     return duration
 
 
 def process_voice(raw_audio_path: str, day: int) -> Path:
-    """
-    Ham ses kaydini isler ve output/video_NN/voiceover.mp3 olarak kaydeder.
-    Boylece pipeline'daki sonraki adim (youtube_montaj.py) TTS'ten gelen
-    voiceover.mp3'u bekledigi gibi, kullanici kaydindan gelen voiceover.mp3'u
-    da ayni sekilde bulur - iki kaynak birbirinin yerine gecebilir.
-    """
     raw_path = Path(raw_audio_path)
     duration = validate_raw_audio(raw_path)
 
     out_dir = config.OUTPUT_DIR / f"video_{day:02d}"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "voiceover.mp3"
+
+    # Eski TTS/deneme dosyasi kalmasin.
+    out_path.unlink(missing_ok=True)
 
     cmd = [
         "ffmpeg", "-y",
@@ -99,7 +91,10 @@ def process_voice(raw_audio_path: str, day: int) -> Path:
         "-ar", str(OUTPUT_SAMPLE_RATE),
         str(out_path),
     ]
-    run_ffmpeg(cmd, f"Gun {day}: ham kayit isleniyor ({duration:.1f}s) -> {out_path.name}")
+    run_ffmpeg(cmd, f"Gun {day}: KULLANICI SESI isleniyor ({duration:.1f}s) -> {out_path.name}")
+
+    if not out_path.exists() or out_path.stat().st_size < MIN_RAW_AUDIO_BYTES:
+        raise RuntimeError(f"Islenen voiceover olusmadi veya cok kucuk: {out_path}")
 
     print(f"[voice_postprocess] Gun {day} tamamlandi -> {out_path}")
     return out_path
@@ -115,4 +110,3 @@ if __name__ == "__main__":
     else:
         print("Kullanim: python voice_postprocess.py <ham_ses_dosyasi> <gun_numarasi>")
         print("Ornek: python voice_postprocess.py content/raw_audio/01.mp3 1")
-      
