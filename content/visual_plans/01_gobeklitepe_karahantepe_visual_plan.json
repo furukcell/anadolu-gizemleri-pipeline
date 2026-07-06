@@ -1,0 +1,470 @@
+{
+  "day": 1,
+  "title": "Göbeklitepe ve Karahantepe — İnsanlık İlk Tapınağını Neden Bilerek Toprağa Gömdü?",
+  "target_duration_seconds": 360,
+  "visual_style": "Full video documentary. Fotoğraf yok. Ken Burns yok. Gerçek hareketli mp4 stock/AI-cinematic klip.",
+  "global_rules": {
+    "allow_photos": false,
+    "must_be_video": true,
+    "min_video_width": 1280,
+    "avoid_global": [
+      "lycia",
+      "lycian",
+      "pinara",
+      "ephesus",
+      "efes",
+      "roman ruins",
+      "greek ruins",
+      "modern tourists",
+      "city traffic"
+    ],
+    "preferred_sources": [
+      "pexels_video",
+      "pixabay_video"
+    ]
+  },
+  "scenes": [
+    {
+      "index": 0,
+      "start": "0:00",
+      "end": "0:20",
+      "label": "Soğuk açılış: taş gölgeleri ve rüzgâr",
+      "description": "Siyah ekrandan çıkan eski taş sütun gölgeleri; sis, gece, yavaş kamera hareketi.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "ai generated cinematic dark ancient stone pillars night fog slow camera movement no people",
+        "cinematic mysterious neolithic stone temple reconstruction night mist",
+        "3d animation ancient megalithic stone pillars fog dark documentary"
+      ],
+      "fallback_queries": [
+        "ancient stone pillars fog cinematic video",
+        "mysterious ancient temple night stock footage"
+      ],
+      "avoid": [
+        "lycia",
+        "lycian",
+        "pinara",
+        "ephesus",
+        "efes",
+        "roman",
+        "greek",
+        "tourists",
+        "modern"
+      ]
+    },
+    {
+      "index": 1,
+      "start": "0:20",
+      "end": "0:38",
+      "label": "Tarih sıralaması: mağara, tarım, köy, tapınak",
+      "description": "İnsanlığın klasik gelişim çizgisi kısa ve ritmik görüntülerle verilir.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 4,
+      "search_queries": [
+        "prehistoric cave fire silhouettes cinematic stock footage",
+        "ancient wheat field cinematic wind close up",
+        "neolithic village reconstruction cinematic video",
+        "ancient stone temple reconstruction cinematic video"
+      ],
+      "fallback_queries": [
+        "prehistoric life cinematic fire",
+        "ancient village cinematic reconstruction"
+      ],
+      "avoid": [
+        "modern city",
+        "roman",
+        "greek",
+        "medieval",
+        "tourists"
+      ]
+    },
+    {
+      "index": 2,
+      "start": "0:38",
+      "end": "0:58",
+      "label": "Dev taşların kesilmesi ve taşınması",
+      "description": "Buğdaydan önce dev taş blokları kesip taşıyan insan silüetleri.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "prehistoric people dragging massive stone block cinematic reconstruction dust sunset no modern tools",
+        "ancient workers moving megalithic stone without wheels cinematic dust",
+        "ai generated neolithic people carrying huge stone block documentary style"
+      ],
+      "fallback_queries": [
+        "megalithic stone moving cinematic",
+        "ancient quarry stone block cinematic"
+      ],
+      "avoid": [
+        "construction machinery",
+        "crane",
+        "truck",
+        "modern"
+      ]
+    },
+    {
+      "index": 3,
+      "start": "0:58",
+      "end": "1:15",
+      "label": "İlk büyük soru: yapılar neden gömüldü?",
+      "description": "Taş tapınağın üstüne toprağın yavaşça kapanması; dramatik gömülme hissi.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "ai generated ancient stone temple slowly buried by earth cinematic reconstruction no people",
+        "cinematic megalithic temple covered with soil burial ritual reconstruction",
+        "ancient ruins disappearing under sand dramatic cinematic"
+      ],
+      "fallback_queries": [
+        "buried ancient ruins cinematic",
+        "earth covering ancient stones video"
+      ],
+      "overlay_text": "NEDEN GÖMÜLDÜ?",
+      "avoid": [
+        "modern",
+        "city",
+        "desert car"
+      ]
+    },
+    {
+      "index": 4,
+      "start": "1:15",
+      "end": "1:32",
+      "label": "Göbeklitepe gerçek alan tanıtımı",
+      "description": "Şanlıurfa tepelerinde gerçek Göbeklitepe hissi; drone/genel alan.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "gobekli tepe aerial footage archaeological site",
+        "gobekli tepe drone footage stone circles",
+        "gobekli tepe archaeological site video"
+      ],
+      "fallback_queries": [
+        "neolithic stone circle archaeological site drone footage",
+        "ancient stone pillars archaeological site aerial"
+      ],
+      "avoid": [
+        "lycia",
+        "pinara",
+        "ephesus",
+        "roman theater",
+        "greek ruins",
+        "tourists",
+        "modern"
+      ]
+    },
+    {
+      "index": 5,
+      "start": "1:32",
+      "end": "1:48",
+      "label": "T biçimli sütunlara yaklaşma",
+      "description": "Kamera T biçimli sütunlara doğru yaklaşır; gerçek ya da CGI rekonstrüksiyon.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "t shaped stone pillars ancient temple slow dolly in cinematic archaeology",
+        "gobekli tepe t shaped pillars close up video",
+        "ai generated neolithic t shaped stone pillars cinematic reconstruction"
+      ],
+      "fallback_queries": [
+        "ancient megalithic pillars cinematic close up",
+        "stone pillars ancient temple video"
+      ],
+      "avoid": [
+        "roman",
+        "greek",
+        "ephesus",
+        "pinara",
+        "modern"
+      ]
+    },
+    {
+      "index": 6,
+      "start": "1:48",
+      "end": "2:12",
+      "label": "11.500 yıl ve derin zaman",
+      "description": "Zaman katmanları; piramit ve Stonehenge yalnızca hızlı karşılaştırma, ana vurgu neolitik taşlarda.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 4,
+      "search_queries": [
+        "ancient timeline cinematic sand particles deep time",
+        "egypt pyramids silhouette cinematic short comparison",
+        "stonehenge mist cinematic short comparison",
+        "ancient neolithic stone pillars darker older cinematic"
+      ],
+      "fallback_queries": [
+        "deep time ancient ruins cinematic",
+        "ancient monuments timeline cinematic"
+      ],
+      "avoid": [
+        "modern tourists",
+        "city traffic"
+      ]
+    },
+    {
+      "index": 7,
+      "start": "2:12",
+      "end": "2:36",
+      "label": "Hayvan kabartmaları ve semboller",
+      "description": "Yılan, tilki, domuz, akbaba gibi hayvan kabartmaları hissi; taş yüzeyde yakın plan.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "ancient stone animal relief carving close up snake fox boar vulture cinematic macro torch light",
+        "gobekli tepe animal relief close up video",
+        "ai generated neolithic animal symbols carved in stone torch light"
+      ],
+      "fallback_queries": [
+        "ancient stone relief carving close up video",
+        "mysterious carved symbols stone cinematic"
+      ],
+      "avoid": [
+        "roman",
+        "greek",
+        "museum crowd",
+        "modern"
+      ]
+    },
+    {
+      "index": 8,
+      "start": "2:36",
+      "end": "2:58",
+      "label": "Süs mü, inanç mı, korku mu?",
+      "description": "Taş sembollerin üzerinde ateş ışığı ve gölge hareketleri; gerilim artar.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "mysterious ancient symbols carved in stone torch light flicker slow camera movement dark documentary",
+        "ancient stone carvings shadows firelight cinematic video",
+        "ai generated forgotten belief symbols carved on stone dark ritual atmosphere"
+      ],
+      "fallback_queries": [
+        "mysterious stone symbols cinematic",
+        "torch light on ancient stone video"
+      ],
+      "overlay_text_sequence": [
+        "SÜS MÜ?",
+        "İNANÇ MI?",
+        "KORKU MU?"
+      ],
+      "avoid": [
+        "modern",
+        "museum visitors",
+        "roman"
+      ]
+    },
+    {
+      "index": 9,
+      "start": "2:58",
+      "end": "3:24",
+      "label": "Mühendislik imkânsızlığı",
+      "description": "Taş ocağı, ilkel aletler, büyük bloklar ve tekerleksiz taşıma.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "prehistoric quarry stone block extraction primitive tools cinematic reconstruction",
+        "ancient workers moving megalithic stone without wheels dust dramatic light",
+        "ai generated neolithic quarry massive stone block documentary"
+      ],
+      "fallback_queries": [
+        "ancient quarry cinematic video",
+        "megalithic construction prehistoric cinematic"
+      ],
+      "avoid": [
+        "modern machines",
+        "crane",
+        "truck",
+        "excavator"
+      ]
+    },
+    {
+      "index": 10,
+      "start": "3:24",
+      "end": "3:47",
+      "label": "Tarım mı inanç mı önce geldi?",
+      "description": "Buğday tarlasından taş tapınağa sembolik geçiş; düşünce kırılması.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "wheat field dissolving into ancient stone temple cinematic transition",
+        "ancient belief before agriculture cinematic reconstruction",
+        "neolithic ritual temple before farming cinematic"
+      ],
+      "fallback_queries": [
+        "wheat field cinematic transition ancient ruins",
+        "ancient temple mysterious cinematic"
+      ],
+      "avoid": [
+        "modern farm machinery",
+        "tractor",
+        "city"
+      ]
+    },
+    {
+      "index": 11,
+      "start": "3:47",
+      "end": "4:18",
+      "label": "Avcı-toplayıcıların tepeye gelişi",
+      "description": "Küçük gruplar gün batımında tepeye yürür, ateşler yanar, ritüel alanı kurulur.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 4,
+      "search_queries": [
+        "hunter gatherer groups walking toward hill campfires prehistoric ritual gathering cinematic wide shot",
+        "ai generated prehistoric people gathering around fire ancient hill temple documentary style",
+        "neolithic ritual gathering at sunset stone pillars cinematic reconstruction",
+        "ancient campfires on hill cinematic prehistoric people silhouettes"
+      ],
+      "fallback_queries": [
+        "prehistoric ritual gathering cinematic",
+        "ancient people campfire silhouettes video"
+      ],
+      "avoid": [
+        "modern tents",
+        "tourists",
+        "fantasy magic",
+        "city"
+      ]
+    },
+    {
+      "index": 12,
+      "start": "4:18",
+      "end": "4:38",
+      "label": "Kim yönetti? Şaman mı?",
+      "description": "Ateş başında yüzü görünmeyen ritüel figürü; taşlar arka planda.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "prehistoric shaman silhouette by fire ancient stone pillars background ritual atmosphere cinematic",
+        "ancient ritual leader silhouette firelight stone temple documentary style",
+        "ai generated neolithic shaman by fire stone circle cinematic"
+      ],
+      "fallback_queries": [
+        "shaman silhouette fire ancient ritual video",
+        "prehistoric ritual fire cinematic"
+      ],
+      "avoid": [
+        "wizard magic",
+        "fantasy spell",
+        "modern costume"
+      ]
+    },
+    {
+      "index": 13,
+      "start": "4:38",
+      "end": "5:02",
+      "label": "Karahantepe devreye giriyor",
+      "description": "Karahantepe gerçek alan ya da dar taş oda rekonstrüksiyonu; Göbeklitepe’den daha karanlık his.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "karahantepe archaeological site video",
+        "ancient narrow stone chamber archaeological reconstruction dark room slow camera movement",
+        "ai generated karahantepe neolithic stone chamber cinematic reconstruction"
+      ],
+      "fallback_queries": [
+        "neolithic stone chamber dark archaeological reconstruction",
+        "ancient stone room cinematic video"
+      ],
+      "avoid": [
+        "lycia",
+        "pinara",
+        "ephesus",
+        "roman",
+        "greek",
+        "tourists"
+      ]
+    },
+    {
+      "index": 14,
+      "start": "5:02",
+      "end": "5:24",
+      "label": "İnsan başı ve karanlık oda",
+      "description": "Taş oda içinde insan başı benzeri heykel, figürler ve gölgeler.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 3,
+      "search_queries": [
+        "neolithic stone chamber human head sculpture dark archaeological reconstruction torch light",
+        "ancient human head stone carving close up cinematic shadows",
+        "ai generated prehistoric human head sculpture stone room documentary"
+      ],
+      "fallback_queries": [
+        "ancient stone head sculpture dark chamber video",
+        "stone statue head shadows cinematic"
+      ],
+      "avoid": [
+        "roman bust",
+        "greek statue",
+        "museum crowd",
+        "modern"
+      ]
+    },
+    {
+      "index": 15,
+      "start": "5:24",
+      "end": "5:42",
+      "label": "Yapıların üstü kapanıyor",
+      "description": "Ekran karanlık; taş tapınağın üstüne toprak/moloz iner.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "ancient megalithic temple being covered with soil burial ritual cinematic reconstruction slow motion",
+        "ai generated ancient stone pillars buried under earth dramatic documentary",
+        "ancient ruins covered by soil cinematic reconstruction"
+      ],
+      "fallback_queries": [
+        "buried stone temple cinematic",
+        "earth covering ancient ruins video"
+      ],
+      "overlay_text": "BİR GÜN… ÜZERİNİ KAPATTILAR.",
+      "avoid": [
+        "modern demolition",
+        "bulldozer",
+        "construction"
+      ]
+    },
+    {
+      "index": 16,
+      "start": "5:42",
+      "end": "6:00",
+      "label": "Cliffhanger: Neden?",
+      "description": "Toprak altında kalan taş sütun; kamera geri çekilir, sessiz tepeler, son iki saniye siyah.",
+      "must_be_video": true,
+      "allow_photo": false,
+      "desired_media_count": 2,
+      "search_queries": [
+        "buried ancient stone pillar underground slow camera pullback dark soil mysterious documentary",
+        "silent hills of southeastern anatolia at dusk cinematic",
+        "ai generated buried neolithic stone pillar underground final shot"
+      ],
+      "fallback_queries": [
+        "buried ancient pillar cinematic video",
+        "mysterious hills dusk cinematic video"
+      ],
+      "overlay_text": "NEDEN?",
+      "avoid": [
+        "modern",
+        "city",
+        "roman",
+        "greek",
+        "tourists"
+      ]
+    }
+  ]
+}
