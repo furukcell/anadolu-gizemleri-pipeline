@@ -231,9 +231,11 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "Göbekli Tepe aerial footage archaeological site",
-        "Gobekli Tepe drone footage stone circles",
-        "archaeological site stone circles aerial cinematic"
+        "ancient archaeological site aerial footage stone ruins cinematic",
+        "archaeological excavation site aerial drone footage stone circles",
+        "ancient ruins aerial landscape cinematic documentary",
+        "stone circle archaeological site drone cinematic",
+        "southeastern anatolia hills archaeological site cinematic"
       ],
       "on_screen_text": [],
       "music_mood": "ancient_mystery_drone",
@@ -250,6 +252,11 @@
           "at": "01:17",
           "volume": 0.08
         }
+      ],
+      "fallback_queries": [
+        "ancient ruins aerial footage",
+        "archaeology site drone footage",
+        "stone ruins landscape cinematic"
       ]
     },
     {
@@ -261,9 +268,11 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "T shaped stone pillars ancient temple slow dolly in cinematic archaeology",
-        "Gobekli Tepe T-shaped pillars close up video",
-        "neolithic T shaped monoliths cinematic reconstruction"
+        "ancient stone pillars close up cinematic archaeology",
+        "megalithic stone pillars cinematic slow camera movement",
+        "ancient monolith stone pillars ruins cinematic",
+        "stone columns archaeological site close up video",
+        "neolithic stone monoliths cinematic reconstruction"
       ],
       "on_screen_text": [],
       "music_mood": "low_cinematic_pulse",
@@ -280,6 +289,11 @@
           "at": "01:42",
           "volume": 0.08
         }
+      ],
+      "fallback_queries": [
+        "ancient stone pillars video",
+        "stone monoliths cinematic",
+        "archaeological stone columns"
       ]
     },
     {
@@ -334,9 +348,14 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "ancient stone animal relief carving close up snake fox boar vulture cinematic macro torch light",
-        "Gobekli Tepe animal relief close up video",
-        "mysterious ancient animal symbols carved in stone torch light cinematic"
+        "ancient stone carving close up cinematic",
+        "ancient rock art petroglyphs close up cinematic",
+        "stone relief carving close up documentary",
+        "archaeologist cleaning ancient stone carving close up",
+        "ancient wall carvings torchlight close up",
+        "archaeological close up stone symbols cinematic",
+        "ancient carved symbols on stone macro video",
+        "stone texture ancient engraving close up"
       ],
       "on_screen_text": [],
       "music_mood": "dark_symbolic_texture",
@@ -358,6 +377,12 @@
           "at": "02:28",
           "volume": 0.08
         }
+      ],
+      "fallback_queries": [
+        "ancient stone carvings close up",
+        "petroglyphs close up video",
+        "archaeology artifact close up stone",
+        "stone engraving close up cinematic"
       ]
     },
     {
@@ -369,9 +394,11 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "mysterious ancient symbols carved in stone torch light flicker slow camera movement dark documentary",
-        "ancient carved stone symbols dramatic shadows cinematic",
-        "prehistoric symbols on stone dark torchlight cinematic"
+        "mysterious ancient symbols carved in stone torch light cinematic",
+        "ancient stone carvings shadows cinematic close up",
+        "prehistoric symbols on stone dark torchlight cinematic",
+        "ancient petroglyphs dark cinematic close up",
+        "stone wall carvings fire light shadows"
       ],
       "on_screen_text": [
         {
@@ -412,6 +439,11 @@
           "at": "02:51",
           "volume": 0.14
         }
+      ],
+      "fallback_queries": [
+        "ancient stone symbols video",
+        "petroglyphs torchlight",
+        "stone carvings shadows"
       ]
     },
     {
@@ -458,9 +490,11 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "wheat field dissolving into ancient stone temple cinematic transition",
-        "ancient belief before agriculture cinematic reconstruction",
-        "neolithic ritual temple and wheat field symbolic cinematic"
+        "wheat field cinematic wind ancient history documentary",
+        "ancient stone temple ruins cinematic transition",
+        "wheat field sunset cinematic documentary",
+        "stone ruins cinematic slow camera movement",
+        "ancient belief ritual temple cinematic reconstruction"
       ],
       "on_screen_text": [
         {
@@ -484,6 +518,11 @@
           "at": "03:34",
           "volume": 0.1
         }
+      ],
+      "fallback_queries": [
+        "wheat field cinematic",
+        "ancient ruins cinematic",
+        "stone temple cinematic"
       ]
     },
     {
@@ -565,9 +604,12 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "Karahantepe archaeological site video",
-        "ancient narrow stone chamber archaeological reconstruction dark room slow camera movement",
-        "neolithic stone chamber human head sculpture dark archaeological reconstruction torch light"
+        "ancient archaeological excavation site stone walls cinematic",
+        "ancient stone chamber archaeological reconstruction dark room slow camera movement",
+        "underground stone chamber ruins cinematic",
+        "ancient stone corridor archaeological site cinematic",
+        "dark cave stone chamber torch light cinematic",
+        "archaeological dig site stone walls documentary footage"
       ],
       "on_screen_text": [
         {
@@ -591,6 +633,12 @@
           "at": "04:48",
           "volume": 0.1
         }
+      ],
+      "fallback_queries": [
+        "archaeological excavation site stone walls",
+        "ancient stone chamber cinematic",
+        "stone corridor ruins video",
+        "dark stone room cinematic"
       ]
     },
     {
@@ -602,9 +650,12 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "neolithic stone chamber human head sculpture dark archaeological reconstruction torch light",
-        "ancient human head stone carving close up cinematic shadows",
-        "dark prehistoric stone chamber mysterious human figure carving cinematic"
+        "ancient stone sculpture close up dark cinematic",
+        "stone statue face close up shadows cinematic",
+        "archaeological artifact human head sculpture close up",
+        "ancient carved stone face cinematic",
+        "dark stone chamber sculpture torch light",
+        "museum ancient stone head sculpture close up documentary"
       ],
       "on_screen_text": [],
       "music_mood": "karahantepe_dark_room",
@@ -626,6 +677,12 @@
           "at": "05:18",
           "volume": 0.1
         }
+      ],
+      "fallback_queries": [
+        "ancient stone sculpture close up",
+        "stone face statue close up",
+        "archaeological artifact close up",
+        "dark stone chamber video"
       ]
     },
     {
@@ -637,9 +694,12 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "ancient megalithic temple being covered with soil burial ritual cinematic reconstruction slow motion",
-        "ancient stone temple slowly buried by earth cinematic dramatic",
-        "prehistoric ruins covered by falling soil dark cinematic"
+        "soil falling on ancient stones close up cinematic",
+        "earth falling slow motion cinematic dark",
+        "dust falling on stone ruins cinematic",
+        "buried ancient ruins cinematic",
+        "stone ruins underground soil cinematic",
+        "sand falling over rocks cinematic close up"
       ],
       "on_screen_text": [
         {
@@ -668,6 +728,12 @@
           "at": "05:36",
           "volume": 0.14
         }
+      ],
+      "fallback_queries": [
+        "soil falling slow motion",
+        "dust falling on stone",
+        "buried ruins cinematic",
+        "earth falling video"
       ]
     },
     {
@@ -679,9 +745,12 @@
       "must_be_video": true,
       "allow_photo": false,
       "search_queries": [
-        "buried ancient stone pillar underground slow camera pullback dark soil mysterious documentary",
-        "silent hills of southeastern anatolia at dusk cinematic",
-        "ancient buried temple underground cinematic mystery"
+        "buried stone ruins cinematic dark soil",
+        "ancient stone pillar underground cinematic",
+        "underground tunnel stone ruins cinematic",
+        "ancient ruins at dusk cinematic landscape",
+        "silent hills dusk cinematic landscape",
+        "dark soil ancient stone close up cinematic"
       ],
       "on_screen_text": [
         {
@@ -710,7 +779,15 @@
           "at": "05:58",
           "volume": 0.08
         }
+      ],
+      "fallback_queries": [
+        "underground stone ruins video",
+        "ancient ruins dusk cinematic",
+        "dark soil stone close up",
+        "hills dusk cinematic"
       ]
     }
-  ]
+  ],
+  "version": "v7b_fallback_queries",
+  "notes": "Niche Göbeklitepe/Karahantepe exact queries broadened so Pexels can find real MP4 video instead of failing on exact terms."
 }
