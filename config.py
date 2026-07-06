@@ -80,7 +80,7 @@ BACKGROUND_MUSIC_VOLUME = 0.12  # anlatimin uzerine hafif altmuzik
 # YOUTUBE UPLOAD
 # =========================================================
 YOUTUBE_CATEGORY_ID = "27"   # Education (Truva, Hattusas vb. icin uygun)
-YOUTUBE_PRIVACY_STATUS = "public"   # "private" / "unlisted" ile test edebilirsin
+YOUTUBE_PRIVACY_STATUS = "private"   # "private" / "unlisted" ile test edebilirsin
 YOUTUBE_CLIENT_SECRET_FILE = os.environ.get(
     "YOUTUBE_CLIENT_SECRET_FILE", "client_secret.json"
 )
