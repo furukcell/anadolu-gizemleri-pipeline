@@ -1,12 +1,25 @@
 """
 video_discovery.py
 ------------------
-V8: Konuya özel lisanslı/indirilebilir video adayı avcısı.
+V9: Konuya özel lisanslı/indirilebilir video adayı avcısı.
+
+DEĞİŞİKLİK (V8 -> V9):
+- V8'de bir aday, konu adı (Göbeklitepe/Karahantepe vb.) hiç geçmese bile
+  "temple", "reconstruction", "animation", "documentary" gibi genel
+  terimlerden topladığı puanla eşiği (min_topic_score) geçip kabul
+  edilebiliyordu. Bu da alakasız videoların sisteme sızmasına sebep oluyordu.
+- V9'da kabul kuralı sıkılaştırıldı: bir aday, search_profile'da tanımlı
+  "strong_topic_terms" listesinden EN AZ BİRİNİ içermiyorsa, puanı ne
+  olursa olsun REDDEDİLİR. Genel terimler artık tek başına yeterli değil.
+- STRONG_TOPIC_TERMS artık dosya içine sabit kodlanmıyor; her günün kendi
+  search_profile JSON'ında "strong_topic_terms" alanı olarak tanımlanmalı.
+  Bu alan yoksa/boşsa o gün için hiçbir aday kabul edilmez (sessizce yanlış
+  video geçmesindense pipeline durur).
 
 Amaç:
 - Pexels/Pixabay'dan rastgele "ancient stone" videosu çekip alakasız sonuç üretmeyi bitirmek.
-- Önce Göbeklitepe/Karahantepe/rekonstrüksiyon konulu aday havuzu kurmak.
-- Lisans ve konu puanı düşükse video üretimini durdurmak.
+- Önce konuya özel (örn. Göbeklitepe/Karahantepe) aday havuzu kurmak.
+- Konu adı geçmiyorsa veya lisans/skor düşükse video üretimini durdurmak.
 
 Kaynaklar:
 - YouTube Creative Commons: aday listesi için kullanılır, otomatik indirme yapmaz.
@@ -15,8 +28,8 @@ Kaynaklar:
 - Pexels/Pixabay: sadece gerçekten konuya yakın görünüyorsa düşük öncelikli aday olur.
 
 Çıktı:
-  output/video_NN/video_candidates.json
-  output/video_NN/video_candidates_report.md
+- output/video_NN/video_candidates.json
+- output/video_NN/video_candidates_report.md
 """
 
 from __future__ import annotations
@@ -34,7 +47,6 @@ import requests
 
 import config
 
-
 YOUTUBE_SEARCH_API = "https://www.googleapis.com/youtube/v3/search"
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 ARCHIVE_ADVANCED_SEARCH = "https://archive.org/advancedsearch.php"
@@ -47,22 +59,20 @@ RETRY_COUNT = 2
 RETRY_SLEEP = 2
 
 USER_AGENT = (
-    "AnadoluGizemleriVideoDiscovery/1.0 "
+    "AnadoluGizemleriVideoDiscovery/2.0 "
     "(https://github.com/furukcell/anadolu-gizemleri-pipeline)"
 )
 
+# Bunlar artık sadece search_profile'da "strong_topic_terms" TANIMLANMAMIŞSA
+# kullanılan bir uyarı/varsayılan örnektir - gerçek kullanımda her profile
+# kendi strong_topic_terms listesini vermeli.
+DEFAULT_STRONG_TOPIC_TERMS_EXAMPLE = ["gobekli", "göbekli", "karahantepe"]
+
 DEFAULT_POSITIVE_TERMS = [
-    "gobekli", "göbekli", "gobeklitepe", "göbeklitepe", "gobekli tepe", "göbekli tepe",
-    "karahantepe", "sanliurfa", "şanlıurfa", "urfa",
     "neolithic", "neolitik", "temple", "tapinak", "tapınak",
     "archaeology", "arkeoloji", "excavation", "kazı", "kazi",
-    "reconstruction", "rekonstrüksiyon", "reconstruction", "3d", "animation", "animasyon",
-    "cgi", "ai", "cinematic", "belgesel", "documentary"
-]
-
-STRONG_TOPIC_TERMS = [
-    "gobekli", "göbekli", "gobeklitepe", "göbeklitepe", "gobekli tepe", "göbekli tepe",
-    "karahantepe"
+    "reconstruction", "rekonstrüksiyon", "3d", "animation", "animasyon",
+    "cgi", "ai", "cinematic", "belgesel", "documentary",
 ]
 
 DEFAULT_NEGATIVE_TERMS = [
@@ -70,7 +80,7 @@ DEFAULT_NEGATIVE_TERMS = [
     "pamukkale", "hierapolis", "perge", "side", "miletus", "troy", "troya", "truva",
     "hattusa", "hattuşa", "ani", "nemrut", "gordion", "istanbul", "cappadocia",
     "beach", "resort", "hotel", "vlog", "travel vlog", "tourist", "modern city",
-    "cars", "football", "game", "minecraft"
+    "cars", "football", "game", "minecraft",
 ]
 
 
@@ -101,7 +111,6 @@ def _get(url: str, params=None, headers=None):
     last_err = None
     headers = headers or {}
     headers.setdefault("User-Agent", USER_AGENT)
-
     for attempt in range(RETRY_COUNT + 1):
         try:
             resp = requests.get(url, params=params, headers=headers, timeout=REQUEST_TIMEOUT)
@@ -110,10 +119,8 @@ def _get(url: str, params=None, headers=None):
             last_err = f"HTTP {resp.status_code}: {resp.text[:200]}"
         except requests.RequestException as e:
             last_err = str(e)
-
         if attempt < RETRY_COUNT:
             time.sleep(RETRY_SLEEP)
-
     print(f"[video_discovery] Istek basarisiz: {url} -> {last_err}")
     return None
 
@@ -130,27 +137,14 @@ def load_search_profile(day: int) -> dict:
     profile_dir = config.CONTENT_DIR / "search_profiles"
     candidates = sorted(profile_dir.glob(f"{day:02d}_*_queries.json"))
     if not candidates:
-        print("[video_discovery] Search profile yok, varsayilan Göbeklitepe/Karahantepe sorgulari kullanilacak.")
-        return {
-            "day": day,
-            "topic": "gobekli tepe karahantepe",
-            "min_topic_score": 8,
-            "max_results_per_query": 8,
-            "discovery_queries": [
-                "gobekli tepe reconstruction",
-                "gobekli tepe 3d reconstruction",
-                "gobekli tepe animation",
-                "gobekli tepe ai reconstruction",
-                "göbeklitepe rekonstrüksiyon",
-                "karahantepe reconstruction",
-                "karahantepe excavation",
-                "neolithic temple reconstruction anatolia",
-                "prehistoric temple reconstruction"
-            ],
-            "positive_terms": DEFAULT_POSITIVE_TERMS,
-            "negative_terms": DEFAULT_NEGATIVE_TERMS,
-        }
-
+        raise FileNotFoundError(
+            f"Search profile bulunamadi: {profile_dir}/{day:02d}_*_queries.json\n"
+            "V9 mod, konu adi hic gecmeyen genel videolarin kabul edilmesini "
+            "engellemek icin her gun kendi 'strong_topic_terms' listesini "
+            "tanimlayan bir search_profile ister. Varsayilan Göbeklitepe "
+            "sorgularina otomatik geri donmuyor - bu, alakasiz video sizmasinin "
+            "asil sebebiydi."
+        )
     path = candidates[0]
     profile = json.loads(path.read_text(encoding="utf-8"))
     profile["_profile_path"] = str(path)
@@ -159,11 +153,21 @@ def load_search_profile(day: int) -> dict:
     profile.setdefault("positive_terms", DEFAULT_POSITIVE_TERMS)
     profile.setdefault("negative_terms", DEFAULT_NEGATIVE_TERMS)
     profile.setdefault("discovery_queries", [])
+    strong_terms = profile.get("strong_topic_terms") or []
+    if not strong_terms:
+        raise ValueError(
+            f"Search profile icinde 'strong_topic_terms' bos/yok: {path}\n"
+            "Bu liste olmadan hicbir aday kabul edilemez (genel kelimelerle "
+            "puan toplayip gecmesin diye). Profile dosyasina konunun kendi "
+            "adini/varyasyonlarini icak bir 'strong_topic_terms' dizisi ekle."
+        )
+    profile["strong_topic_terms"] = strong_terms
     print(f"[video_discovery] Search profile yuklendi -> {path}")
     return profile
 
 
-def score_candidate(c: dict, profile: dict) -> int:
+def score_candidate(c: dict, profile: dict) -> tuple[int, bool]:
+    """Puan ve 'konu adi gecti mi' bilgisini birlikte dondurur."""
     text = _norm(_safe_text(
         c.get("title"),
         c.get("description"),
@@ -173,24 +177,25 @@ def score_candidate(c: dict, profile: dict) -> int:
         c.get("creator"),
     ))
 
+    strong_terms = profile.get("strong_topic_terms") or []
     positive_terms = profile.get("positive_terms") or DEFAULT_POSITIVE_TERMS
     negative_terms = profile.get("negative_terms") or DEFAULT_NEGATIVE_TERMS
 
     score = 0
+    strong_hit = False
 
-    # Konunun kendisi en onemli sey.
-    for term in STRONG_TOPIC_TERMS:
-        t = _norm(term)
+    # Konunun kendisi en onemli sey - ve artik ZORUNLU.
+    normalized_strong = [_norm(t) for t in strong_terms]
+    for t in normalized_strong:
         if t and t in text:
             score += 8
+            strong_hit = True
 
     for term in positive_terms:
         t = _norm(term)
-        if not t:
+        if not t or t in normalized_strong:
             continue
         if t in text:
-            if t in [_norm(x) for x in STRONG_TOPIC_TERMS]:
-                continue
             score += 2
 
     for term in negative_terms:
@@ -198,7 +203,8 @@ def score_candidate(c: dict, profile: dict) -> int:
         if t and t in text:
             score -= 10
 
-    # Rekonstruksiyon/AI/3D gibi kelimeler ekstra degerli.
+    # Rekonstruksiyon/AI/3D gibi kelimeler ekstra degerli - ama tek basina
+    # kabul icin yeterli degil, strong_hit sarti asagida ayrica kontrol edilir.
     for term in ["reconstruction", "rekonstruksiyon", "3d", "animation", "animasyon", "cgi", "ai"]:
         if term in text:
             score += 3
@@ -209,12 +215,16 @@ def score_candidate(c: dict, profile: dict) -> int:
     if c.get("license"):
         score += 1
 
-    return score
+    return score, strong_hit
 
 
 def _finalize_candidate(c: dict, profile: dict) -> dict:
-    c["topic_score"] = score_candidate(c, profile)
-    c["accepted"] = c["topic_score"] >= int(profile.get("min_topic_score", 8))
+    score, strong_hit = score_candidate(c, profile)
+    c["topic_score"] = score
+    c["strong_topic_match"] = strong_hit
+    min_score = int(profile.get("min_topic_score", 8))
+    # V9: strong_hit olmadan hicbir aday kabul edilmez - puan ne olursa olsun.
+    c["accepted"] = bool(strong_hit) and score >= min_score
     return c
 
 
@@ -223,7 +233,6 @@ def search_youtube_cc(query: str, profile: dict) -> list[dict]:
     if not api_key:
         print("[video_discovery] YOUTUBE_API_KEY yok, YouTube CC aramasi atlandi.")
         return []
-
     params = {
         "part": "snippet",
         "type": "video",
@@ -237,7 +246,6 @@ def search_youtube_cc(query: str, profile: dict) -> list[dict]:
     resp = _get(YOUTUBE_SEARCH_API, params=params)
     if not resp:
         return []
-
     out = []
     for item in resp.json().get("items", []):
         video_id = item.get("id", {}).get("videoId")
@@ -308,7 +316,6 @@ def search_wikimedia_commons(query: str, profile: dict) -> list[dict]:
     resp = _get(COMMONS_API, params=params)
     if not resp:
         return []
-
     out = []
     for item in resp.json().get("query", {}).get("search", []):
         title = item.get("title", "")
@@ -337,7 +344,7 @@ def _archive_download_url(identifier: str, file_name: str) -> str:
 
 
 def search_internet_archive(query: str, profile: dict) -> list[dict]:
-    q = f'({query}) AND mediatype:movies'
+    q = f"({query}) AND mediatype:movies"
     params = {
         "q": q,
         "fl[]": ["identifier", "title", "description", "licenseurl", "creator"],
@@ -348,7 +355,6 @@ def search_internet_archive(query: str, profile: dict) -> list[dict]:
     resp = _get(ARCHIVE_ADVANCED_SEARCH, params=params)
     if not resp:
         return []
-
     out = []
     docs = resp.json().get("response", {}).get("docs", [])
     for doc in docs:
@@ -365,19 +371,16 @@ def search_internet_archive(query: str, profile: dict) -> list[dict]:
             name = f.get("name", "")
             fmt = (f.get("format") or "").lower()
             if name.lower().endswith((".mp4", ".webm", ".ogv", ".mov")) or "mpeg4" in fmt or "h.264" in fmt:
-                # Turetilmis kucuk thumb/mp4 yerine ana dosyaya yakin olanlari tercih et.
                 if "thumb" in name.lower() or "sample" in name.lower():
                     continue
                 video_file = name
                 break
         if not video_file:
             continue
-
         title = doc.get("title") or meta.get("metadata", {}).get("title") or identifier
         desc = doc.get("description") or meta.get("metadata", {}).get("description") or ""
         license_url = doc.get("licenseurl") or meta.get("metadata", {}).get("licenseurl") or ""
         creator = doc.get("creator") or meta.get("metadata", {}).get("creator") or ""
-
         out.append({
             "source": "internet_archive",
             "title": title,
@@ -415,7 +418,6 @@ def _best_pexels_video_link(video: dict) -> str | None:
 def search_pexels_topic(query: str, profile: dict) -> list[dict]:
     if not config.PEXELS_API_KEY:
         return []
-
     headers = {"Authorization": config.PEXELS_API_KEY, "User-Agent": USER_AGENT}
     params = {
         "query": query,
@@ -425,14 +427,12 @@ def search_pexels_topic(query: str, profile: dict) -> list[dict]:
     resp = _get(PEXELS_VIDEO_API, params=params, headers=headers)
     if not resp:
         return []
-
     out = []
     for video in resp.json().get("videos", []):
         link = _best_pexels_video_link(video)
         if not link:
             continue
         meta_url = video.get("url", "")
-        # Pexels sonucunun kendisinde konu gecmiyorsa kabul etme. Query'yi skora katmiyoruz.
         out.append({
             "source": "pexels_video",
             "title": meta_url.split("/")[-2].replace("-", " ") if "/" in meta_url else "Pexels video",
@@ -443,7 +443,7 @@ def search_pexels_topic(query: str, profile: dict) -> list[dict]:
             "creator": video.get("user", {}).get("name", ""),
             "query": query,
             "usable_for_auto_download": True,
-            "note": "Sadece topic_score yeterliyse kullanilir; query skora katilmaz.",
+            "note": "Sadece strong_topic_terms eslesirse ve topic_score yeterliyse kullanilir.",
         })
     return out
 
@@ -461,7 +461,6 @@ def search_pixabay_topic(query: str, profile: dict) -> list[dict]:
     api_key = os.environ.get("PIXABAY_API_KEY", "")
     if not api_key:
         return []
-
     params = {
         "key": api_key,
         "q": query,
@@ -472,7 +471,6 @@ def search_pixabay_topic(query: str, profile: dict) -> list[dict]:
     resp = _get(PIXABAY_VIDEO_API, params=params)
     if not resp:
         return []
-
     out = []
     for video in resp.json().get("hits", []):
         link = _best_pixabay_video_link(video)
@@ -488,7 +486,7 @@ def search_pixabay_topic(query: str, profile: dict) -> list[dict]:
             "creator": str(video.get("user", "")),
             "query": query,
             "usable_for_auto_download": True,
-            "note": "Sadece topic_score yeterliyse kullanilir.",
+            "note": "Sadece strong_topic_terms eslesirse ve topic_score yeterliyse kullanilir.",
         })
     return out
 
@@ -499,22 +497,18 @@ def discover_candidates(day: int) -> dict:
     if not queries:
         raise RuntimeError("Search profile icinde discovery_queries bos.")
 
-    print(f"[video_discovery] V8 konu videosu avcisi basladi. Sorgu sayisi: {len(queries)}")
+    print(f"[video_discovery] V9 konu videosu avcisi basladi. Sorgu sayisi: {len(queries)}")
+    print(f"[video_discovery] Zorunlu strong_topic_terms: {profile.get('strong_topic_terms')}")
 
     raw_candidates = []
     for query in queries:
         print(f"[video_discovery] Araniyor -> {query}")
-
-        # YouTube CC: otomatik indirme yok, ama konu adayi ve manuel kaynak listesi.
         raw_candidates.extend(search_youtube_cc(query, profile))
-
-        # Otomatik indirilebilir kaynaklar.
         raw_candidates.extend(search_wikimedia_commons(query, profile))
         raw_candidates.extend(search_internet_archive(query, profile))
         raw_candidates.extend(search_pexels_topic(query, profile))
         raw_candidates.extend(search_pixabay_topic(query, profile))
 
-    # Tekilleştir + skorla.
     by_key = {}
     for cand in raw_candidates:
         cand = _finalize_candidate(cand, profile)
@@ -532,15 +526,28 @@ def discover_candidates(day: int) -> dict:
         if c.get("usable_for_auto_download") and c.get("download_url")
     ]
 
+    rejected_but_high_score = [
+        c for c in all_candidates
+        if not c.get("accepted") and c.get("topic_score", 0) >= int(profile.get("min_topic_score", 8))
+    ]
+    if rejected_but_high_score:
+        print(
+            f"[video_discovery] Bilgi: {len(rejected_but_high_score)} aday yuksek puan aldi "
+            "ama konu adi (strong_topic_terms) gecmedigi icin reddedildi - "
+            "V8'de bunlar yanlislikla kabul ediliyordu."
+        )
+
     result = {
         "day": day,
-        "mode": "topic_video_discovery_v8",
+        "mode": "topic_video_discovery_v9",
         "profile_path": profile.get("_profile_path"),
         "min_topic_score": profile.get("min_topic_score", 8),
+        "strong_topic_terms": profile.get("strong_topic_terms"),
         "query_count": len(queries),
         "candidate_count": len(all_candidates),
         "accepted_count": len(accepted),
         "auto_downloadable_count": len(auto_downloadable),
+        "rejected_high_score_no_topic_match": len(rejected_but_high_score),
         "queries": queries,
         "accepted_candidates": accepted,
         "auto_downloadable_candidates": auto_downloadable,
@@ -554,10 +561,12 @@ def write_report(result: dict, report_path: Path):
     lines.append(f"# Video Discovery Report - Day {result['day']}")
     lines.append("")
     lines.append(f"- Mode: `{result.get('mode')}`")
+    lines.append(f"- Zorunlu strong_topic_terms: `{result.get('strong_topic_terms')}`")
     lines.append(f"- Min topic score: `{result.get('min_topic_score')}`")
     lines.append(f"- Total candidates: `{result.get('candidate_count')}`")
     lines.append(f"- Accepted candidates: `{result.get('accepted_count')}`")
     lines.append(f"- Auto-downloadable accepted: `{result.get('auto_downloadable_count')}`")
+    lines.append(f"- Reddedilen (yuksek puan ama konu adi yok): `{result.get('rejected_high_score_no_topic_match')}`")
     lines.append("")
     lines.append("## Queries")
     for q in result.get("queries", []):
@@ -596,6 +605,7 @@ def process_day(day: int) -> Path:
     video_dir.mkdir(parents=True, exist_ok=True)
 
     result = discover_candidates(day)
+
     out_path = video_dir / "video_candidates.json"
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -612,7 +622,7 @@ def process_day(day: int) -> Path:
 
     if result["auto_downloadable_count"] <= 0:
         raise RuntimeError(
-            "Konuya yakın otomatik indirilebilir video bulunamadi.\n"
+            "Konuya yakın (strong_topic_terms eslesen) otomatik indirilebilir video bulunamadi.\n"
             f"Raporu incele: {report_path}\n"
             "YouTube CC adaylari varsa manuel incelenebilir; otomatik mp4 indirme yok."
         )
